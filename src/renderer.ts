@@ -170,15 +170,8 @@ class ChatApp {
     // Encrypt and save API key
     const apiKey = this.apiKeyInput.value;
     if (apiKey) {
-      try {
-        const encryptedKey = await window.electronAPI.encryptData(apiKey);
-        localStorage.setItem(ENCRYPTED_API_KEY, encryptedKey);
-      } catch (error) {
-        console.error('Failed to encrypt API key:', error);
-        this.addMessage('error', 'Warning: API key could not be encrypted.');
-        const plainFallback = `plain:${apiKey}`;
-        localStorage.setItem(ENCRYPTED_API_KEY, plainFallback);
-      }
+      const encryptedKey = await window.electronAPI.encryptData(apiKey);
+      localStorage.setItem(ENCRYPTED_API_KEY, encryptedKey);
     } else {
       localStorage.removeItem(ENCRYPTED_API_KEY);
     }

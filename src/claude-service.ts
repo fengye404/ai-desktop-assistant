@@ -177,15 +177,22 @@ export class ClaudeService {
   }
 
   /**
-   * Test API connection
+   * Test API connection with timeout
    */
   async testConnection(): Promise<{ success: boolean; message: string }> {
+    const timeout = 15000; // 15 seconds timeout
+
     try {
-      await this.sendMessage('Say "OK" if you can hear me.');
-      return { success: true, message: 'Connection successful!' };
+      await Promise.race([
+        this.sendMessage('Hi'),
+        new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error('Connection timeout')), timeout)
+        ),
+      ]);
+      return { success: true, message: '连接成功！' };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, message: `Connection failed: ${errorMessage}` };
+      return { success: false, message: `连接失败: ${errorMessage}` };
     }
   }
 

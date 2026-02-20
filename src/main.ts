@@ -104,19 +104,17 @@ ipcMain.handle(IPC_CHANNELS.TEST_CONNECTION, async () => {
 
 // Encryption handlers for secure storage
 ipcMain.handle(IPC_CHANNELS.ENCRYPT_DATA, async (_event, data: string): Promise<string> => {
-  if (!safeStorage.isEncryptionAvailable()) {
-    // Fallback: return data as-is if encryption not available
-    // This can happen on Linux without a keyring
-    console.warn('Encryption not available, storing data in plain text');
-    return `plain:${data}`;
-  }
-
   try {
+    if (!safeStorage.isEncryptionAvailable()) {
+      console.warn('Encryption not available, storing data in plain text');
+      return `plain:${data}`;
+    }
     const encryptedBuffer = safeStorage.encryptString(data);
     return encryptedBuffer.toString('base64');
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Encryption failed';
-    throw new Error(`Failed to encrypt data: ${message}`);
+    console.error('Encryption error:', error);
+    // Fallback to plain text
+    return `plain:${data}`;
   }
 });
 
