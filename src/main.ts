@@ -10,6 +10,12 @@ let mainWindow: BrowserWindow | null = null;
 let claudeService: ClaudeService | null = null;
 let sessionStorage: SessionStorage | null = null;
 
+// Tool approval handling
+let pendingToolApproval: {
+  resolve: (approved: boolean) => void;
+  reject: (error: Error) => void;
+} | null = null;
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -43,6 +49,39 @@ function initClaudeService(): void {
   sessionStorage = new SessionStorage();
   claudeService = new ClaudeService(sessionStorage);
 
+  // Set up tool permission callback
+  claudeService.setToolPermissionCallback(async (toolName: string, input: Record<string, unknown>) => {
+    return new Promise((resolve, reject) => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        resolve(false);
+        return;
+      }
+
+      // Store the promise handlers
+      pendingToolApproval = { resolve, reject };
+
+      // Format input for display
+      const description = Object.entries(input)
+        .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+        .join('\n');
+
+      // Send approval request to renderer
+      mainWindow.webContents.send(IPC_CHANNELS.TOOL_APPROVAL_REQUEST, {
+        tool: toolName,
+        input,
+        description,
+      });
+
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        if (pendingToolApproval) {
+          pendingToolApproval.resolve(false);
+          pendingToolApproval = null;
+        }
+      }, 30000);
+    });
+  });
+
   // Create initial session if none exists
   if (sessionStorage.listSessions().length === 0) {
     sessionStorage.createSession();
@@ -54,6 +93,14 @@ function initClaudeService(): void {
     }
   }
 }
+
+// Handle tool approval response from renderer
+ipcMain.on(IPC_CHANNELS.TOOL_APPROVAL_RESPONSE, (_event, approved: boolean) => {
+  if (pendingToolApproval) {
+    pendingToolApproval.resolve(approved);
+    pendingToolApproval = null;
+  }
+});
 
 // IPC Handlers
 ipcMain.handle(IPC_CHANNELS.SEND_MESSAGE, async (_event, message: string, systemPrompt?: string) => {

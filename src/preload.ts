@@ -20,10 +20,13 @@ const IPC_CHANNELS = {
   CONFIG_SAVE: 'config-save',
   CONFIG_LOAD: 'config-load',
   STREAM_CHUNK: 'stream-chunk',
+  TOOL_APPROVAL_REQUEST: 'tool-approval-request',
+  TOOL_APPROVAL_RESPONSE: 'tool-approval-response',
 } as const;
 
 // Store listener references for proper cleanup
 let streamChunkListener: ((_event: Electron.IpcRendererEvent, chunk: unknown) => void) | null = null;
+let toolApprovalListener: ((_event: Electron.IpcRendererEvent, request: unknown) => void) | null = null;
 
 // Expose protected methods to the renderer process
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -93,6 +96,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke(IPC_CHANNELS.CONFIG_SAVE, config),
 
   configLoad: () => ipcRenderer.invoke(IPC_CHANNELS.CONFIG_LOAD),
+
+  // Tool system
+  onToolApprovalRequest: (callback: (request: { tool: string; input: Record<string, unknown>; description: string }) => void) => {
+    if (toolApprovalListener) {
+      ipcRenderer.removeListener(IPC_CHANNELS.TOOL_APPROVAL_REQUEST, toolApprovalListener);
+    }
+    toolApprovalListener = (_event: Electron.IpcRendererEvent, request: unknown) =>
+      callback(request as { tool: string; input: Record<string, unknown>; description: string });
+    ipcRenderer.on(IPC_CHANNELS.TOOL_APPROVAL_REQUEST, toolApprovalListener);
+  },
+
+  respondToolApproval: (approved: boolean) =>
+    ipcRenderer.send(IPC_CHANNELS.TOOL_APPROVAL_RESPONSE, approved),
 });
 
 // Type definitions for the exposed API

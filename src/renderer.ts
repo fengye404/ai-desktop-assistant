@@ -2,7 +2,7 @@
 
 // Types defined locally to avoid module import issues in browser
 type Provider = 'anthropic' | 'openai';
-type ChunkType = 'text' | 'thinking' | 'error' | 'done';
+type ChunkType = 'text' | 'thinking' | 'error' | 'done' | 'tool_use' | 'tool_result';
 type MessageRole = 'user' | 'assistant';
 
 interface ModelConfig {
@@ -13,9 +13,22 @@ interface ModelConfig {
   maxTokens?: number;
 }
 
+interface ToolUseInfo {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
 interface StreamChunk {
   type: ChunkType;
   content: string;
+  toolUse?: ToolUseInfo;
+}
+
+interface ToolApprovalRequest {
+  tool: string;
+  input: Record<string, unknown>;
+  description: string;
 }
 
 interface ChatMessage {
@@ -65,6 +78,7 @@ class ChatApp {
   private currentAssistantMessage: HTMLElement | null = null;
   private currentSessionId: string | null = null;
   private streamingContent = ''; // Accumulate streaming content
+  private toolApprovalDialog: HTMLElement | null = null;
 
   constructor() {
     this.chatContainer = document.getElementById('chatContainer')!;
@@ -86,6 +100,7 @@ class ChatApp {
     this.initEventListeners();
     this.loadConfig();
     this.loadSessionList();
+    this.initToolApprovalHandler();
   }
 
   private initEventListeners(): void {
@@ -296,6 +311,22 @@ class ChatApp {
       this.setLoading(false);
       // Refresh session list to update preview
       this.loadSessionList();
+      return;
+    }
+
+    // Handle tool use notifications
+    if (chunk.type === 'tool_use' && chunk.toolUse) {
+      const inputStr = JSON.stringify(chunk.toolUse.input, null, 2);
+      this.addToolMessage('use', chunk.toolUse.name, inputStr);
+      return;
+    }
+
+    // Handle tool result notifications
+    if (chunk.type === 'tool_result') {
+      // Extract tool name from content (format: "Tool xxx completed/failed")
+      const match = chunk.content.match(/Tool (\w+) (completed|failed)/);
+      const toolName = match ? match[1] : 'unknown';
+      this.addToolMessage('result', toolName, chunk.content);
       return;
     }
 
@@ -576,6 +607,103 @@ class ChatApp {
     } catch (error) {
       console.error('Failed to rename session:', error);
     }
+  }
+
+  /**
+   * Initialize tool approval handler
+   */
+  private initToolApprovalHandler(): void {
+    window.electronAPI.onToolApprovalRequest((request: ToolApprovalRequest) => {
+      this.showToolApprovalDialog(request);
+    });
+  }
+
+  /**
+   * Show tool approval dialog
+   */
+  private showToolApprovalDialog(request: ToolApprovalRequest): void {
+    // Remove existing dialog
+    if (this.toolApprovalDialog) {
+      this.toolApprovalDialog.remove();
+    }
+
+    // Format input for display
+    const inputDisplay = Object.entries(request.input)
+      .map(([key, value]) => `<div class="tool-input-item"><strong>${key}:</strong> ${JSON.stringify(value)}</div>`)
+      .join('');
+
+    // Create dialog
+    this.toolApprovalDialog = document.createElement('div');
+    this.toolApprovalDialog.className = 'tool-approval-dialog';
+    this.toolApprovalDialog.innerHTML = `
+      <div class="tool-approval-content">
+        <div class="tool-approval-header">
+          <span class="tool-icon">🔧</span>
+          <h3>工具权限请求</h3>
+        </div>
+        <div class="tool-approval-body">
+          <div class="tool-name">
+            <strong>工具名称：</strong> ${this.escapeHtml(request.tool)}
+          </div>
+          <div class="tool-inputs">
+            <strong>参数：</strong>
+            ${inputDisplay}
+          </div>
+        </div>
+        <div class="tool-approval-actions">
+          <button class="tool-btn deny">拒绝</button>
+          <button class="tool-btn approve">允许</button>
+        </div>
+      </div>
+    `;
+
+    // Add event listeners
+    const approveBtn = this.toolApprovalDialog.querySelector('.approve');
+    const denyBtn = this.toolApprovalDialog.querySelector('.deny');
+
+    approveBtn?.addEventListener('click', () => {
+      window.electronAPI.respondToolApproval(true);
+      this.hideToolApprovalDialog();
+    });
+
+    denyBtn?.addEventListener('click', () => {
+      window.electronAPI.respondToolApproval(false);
+      this.hideToolApprovalDialog();
+    });
+
+    document.body.appendChild(this.toolApprovalDialog);
+  }
+
+  /**
+   * Hide tool approval dialog
+   */
+  private hideToolApprovalDialog(): void {
+    if (this.toolApprovalDialog) {
+      this.toolApprovalDialog.remove();
+      this.toolApprovalDialog = null;
+    }
+  }
+
+  /**
+   * Add tool use message to chat
+   */
+  private addToolMessage(type: 'use' | 'result', toolName: string, content: string): void {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message tool-message tool-${type}`;
+
+    const icon = type === 'use' ? '🔧' : '✅';
+    const label = type === 'use' ? '调用工具' : '工具结果';
+
+    messageDiv.innerHTML = `
+      <div class="tool-message-header">
+        <span class="tool-message-icon">${icon}</span>
+        <span class="tool-message-label">${label}: ${this.escapeHtml(toolName)}</span>
+      </div>
+      <div class="tool-message-content">${this.escapeHtml(content)}</div>
+    `;
+
+    this.chatContainer.appendChild(messageDiv);
+    this.chatContainer.scrollTop = this.chatContainer.scrollHeight;
   }
 }
 

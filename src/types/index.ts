@@ -47,7 +47,7 @@ export interface SessionMeta {
 /**
  * Stream chunk types
  */
-export type ChunkType = 'text' | 'thinking' | 'error' | 'done';
+export type ChunkType = 'text' | 'thinking' | 'error' | 'done' | 'tool_use' | 'tool_result';
 
 /**
  * Model configuration for AI providers
@@ -66,6 +66,75 @@ export interface ModelConfig {
 export interface StreamChunk {
   type: ChunkType;
   content: string;
+  toolUse?: ToolUseInfo;
+}
+
+/**
+ * Tool use information in stream
+ */
+export interface ToolUseInfo {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+// ==================== Tool System Types ====================
+
+/**
+ * Permission level for tool execution
+ */
+export type ToolPermission = 'allow' | 'ask' | 'deny';
+
+/**
+ * Tool definition following Anthropic's schema
+ */
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  input_schema: {
+    type: 'object';
+    properties: Record<string, {
+      type: string;
+      description: string;
+      enum?: string[];
+    }>;
+    required?: string[];
+  };
+  permission: ToolPermission;
+}
+
+/**
+ * Tool execution result
+ */
+export interface ToolResult {
+  success: boolean;
+  output?: string;
+  error?: string;
+}
+
+/**
+ * Tool use request from AI
+ */
+export interface ToolUseRequest {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+/**
+ * Tool approval request to renderer
+ */
+export interface ToolApprovalRequest {
+  tool: string;
+  input: Record<string, unknown>;
+  description: string;
+}
+
+/**
+ * Tool approval response from renderer
+ */
+export interface ToolApprovalResponse {
+  approved: boolean;
 }
 
 /**
@@ -103,6 +172,10 @@ export const IPC_CHANNELS = {
   CONFIG_SAVE: 'config-save',
   CONFIG_LOAD: 'config-load',
 
+  // Tool system
+  TOOL_APPROVAL_REQUEST: 'tool-approval-request',
+  TOOL_APPROVAL_RESPONSE: 'tool-approval-response',
+
   // Main -> Renderer
   STREAM_CHUNK: 'stream-chunk',
 } as const;
@@ -134,6 +207,10 @@ export interface ElectronAPI {
   // Config management
   configSave: (config: Partial<ModelConfig>) => Promise<boolean>;
   configLoad: () => Promise<Partial<ModelConfig>>;
+
+  // Tool system
+  onToolApprovalRequest: (callback: (request: ToolApprovalRequest) => void) => void;
+  respondToolApproval: (approved: boolean) => void;
 }
 
 /**

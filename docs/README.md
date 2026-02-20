@@ -4,7 +4,7 @@
 
 ## 产品定位
 
-AI Desktop Assistant 定位为类似 **Anthropic Claude Desktop** 的桌面 AI 协作工具，提供流畅的多轮对话体验、本地文件集成和可扩展的工具系统。
+AI Desktop Assistant 定位为类似 **Anthropic Claude Cowork** 的桌面 AI 协作工具，提供流畅的多轮对话体验、本地文件集成和可扩展的工具系统。
 
 ## 文档目录
 
