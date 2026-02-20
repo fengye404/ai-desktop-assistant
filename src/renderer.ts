@@ -1,6 +1,30 @@
 /// <reference path="./preload.ts" />
 
-import type { ModelConfig, StreamChunk, PresetName, PresetsMap } from './types';
+// Types defined locally to avoid module import issues in browser
+type Provider = 'anthropic' | 'openai' | 'custom';
+type ChunkType = 'text' | 'thinking' | 'error' | 'done';
+
+interface ModelConfig {
+  provider: Provider;
+  apiKey: string;
+  baseURL?: string;
+  model: string;
+  maxTokens?: number;
+}
+
+interface StreamChunk {
+  type: ChunkType;
+  content: string;
+}
+
+interface PresetConfig {
+  provider: Provider;
+  model: string;
+  baseURL?: string;
+}
+
+type PresetName = 'anthropic' | 'openai' | 'ollama' | 'deepseek' | 'moonshot' | 'custom';
+type PresetsMap = Record<PresetName, Partial<PresetConfig>>;
 
 const PRESETS: PresetsMap = {
   anthropic: {
@@ -118,7 +142,7 @@ class ChatApp {
     });
 
     // Stream chunks
-    window.electronAPI.onStreamChunk((chunk) => {
+    window.electronAPI.onStreamChunk((chunk: StreamChunk) => {
       this.handleStreamChunk(chunk);
     });
   }
