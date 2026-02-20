@@ -1,7 +1,7 @@
 /// <reference path="./preload.ts" />
 
 // Types defined locally to avoid module import issues in browser
-type Provider = 'anthropic' | 'openai' | 'custom';
+type Provider = 'anthropic' | 'openai';
 type ChunkType = 'text' | 'thinking' | 'error' | 'done';
 
 interface ModelConfig {
@@ -16,48 +16,6 @@ interface StreamChunk {
   type: ChunkType;
   content: string;
 }
-
-interface PresetConfig {
-  provider: Provider;
-  model: string;
-  baseURL?: string;
-}
-
-type PresetName = 'anthropic' | 'openai' | 'ollama' | 'deepseek' | 'moonshot' | 'custom';
-type PresetsMap = Record<PresetName, Partial<PresetConfig>>;
-
-const PRESETS: PresetsMap = {
-  anthropic: {
-    provider: 'anthropic',
-    model: 'claude-opus-4-6',
-    baseURL: '',
-  },
-  openai: {
-    provider: 'openai',
-    model: 'gpt-4o',
-    baseURL: 'https://api.openai.com/v1',
-  },
-  ollama: {
-    provider: 'openai',
-    model: 'llama3.2',
-    baseURL: 'http://localhost:11434/v1',
-  },
-  deepseek: {
-    provider: 'openai',
-    model: 'deepseek-chat',
-    baseURL: 'https://api.deepseek.com/v1',
-  },
-  moonshot: {
-    provider: 'openai',
-    model: 'moonshot-v1-8k',
-    baseURL: 'https://api.moonshot.cn/v1',
-  },
-  custom: {
-    provider: 'openai',
-    model: '',
-    baseURL: '',
-  },
-};
 
 // Storage keys
 const STORAGE_KEY = 'modelConfig';
@@ -103,12 +61,21 @@ class ChatApp {
       this.settingsPanel.classList.toggle('open');
     });
 
-    // Preset buttons
-    document.querySelectorAll('.preset-btn').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        const preset = (e.target as HTMLElement).dataset.preset as PresetName;
-        this.applyPreset(preset);
-      });
+    // Provider change - set default model
+    this.providerSelect.addEventListener('change', () => {
+      const provider = this.providerSelect.value;
+      if (provider === 'anthropic') {
+        this.modelInput.placeholder = '例如: claude-opus-4-6, claude-sonnet-4-6';
+        if (!this.modelInput.value) {
+          this.modelInput.value = 'claude-opus-4-6';
+        }
+        this.baseURLInput.value = '';
+      } else {
+        this.modelInput.placeholder = '例如: gpt-4o, deepseek-chat, llama3.2';
+        if (!this.modelInput.value) {
+          this.modelInput.value = 'gpt-4o';
+        }
+      }
     });
 
     // Save config
@@ -147,27 +114,6 @@ class ChatApp {
     });
   }
 
-  private applyPreset(preset: PresetName): void {
-    const config = PRESETS[preset];
-    if (!config) return;
-
-    // Update active state
-    document.querySelectorAll('.preset-btn').forEach((btn) => {
-      btn.classList.toggle('active', (btn as HTMLElement).dataset.preset === preset);
-    });
-
-    // Apply values
-    if (config.provider) {
-      this.providerSelect.value = config.provider;
-    }
-    if (config.model) {
-      this.modelInput.value = config.model;
-    }
-    if (config.baseURL !== undefined) {
-      this.baseURLInput.value = config.baseURL;
-    }
-  }
-
   /**
    * Load config from secure storage
    */
@@ -188,7 +134,6 @@ class ChatApp {
             const decryptedKey = await window.electronAPI.decryptData(encryptedKey);
             this.apiKeyInput.value = decryptedKey;
           } catch {
-            // If decryption fails, key might be corrupted or from different machine
             console.warn('Failed to decrypt API key, clearing stored data');
             localStorage.removeItem(ENCRYPTED_API_KEY);
           }
@@ -230,9 +175,7 @@ class ChatApp {
         localStorage.setItem(ENCRYPTED_API_KEY, encryptedKey);
       } catch (error) {
         console.error('Failed to encrypt API key:', error);
-        // Fallback: show warning but still save
-        this.addMessage('error', 'Warning: API key could not be encrypted. It will be stored in plain text.');
-        // Store plain text as fallback (should not happen normally)
+        this.addMessage('error', 'Warning: API key could not be encrypted.');
         const plainFallback = `plain:${apiKey}`;
         localStorage.setItem(ENCRYPTED_API_KEY, plainFallback);
       }
@@ -275,21 +218,17 @@ class ChatApp {
     const message = this.messageInput.value.trim();
     if (!message || this.isLoading) return;
 
-    // Check if configured
     if (!this.apiKeyInput.value) {
       this.addMessage('error', '请先在 Settings 中配置 API Key');
       return;
     }
 
-    // Clear input
     this.messageInput.value = '';
     this.messageInput.style.height = 'auto';
 
-    // Add user message
     this.addMessage('user', message);
     this.setLoading(true);
 
-    // Reset current assistant message
     this.currentAssistantMessage = null;
 
     try {
@@ -302,28 +241,21 @@ class ChatApp {
     }
   }
 
-  /**
-   * Handle stream chunk from main process
-   */
   private handleStreamChunk(chunk: StreamChunk): void {
-    // Handle done signal
     if (chunk.type === 'done') {
       this.setLoading(false);
       return;
     }
 
-    // Remove loading indicator
     const loadingEl = this.chatContainer.querySelector('.loading');
     if (loadingEl) loadingEl.remove();
 
-    // Get or create assistant message
     if (!this.currentAssistantMessage) {
       this.currentAssistantMessage = document.createElement('div');
       this.currentAssistantMessage.className = 'message assistant';
       this.chatContainer.appendChild(this.currentAssistantMessage);
     }
 
-    // Append content
     if (chunk.type === 'text') {
       const currentText = this.currentAssistantMessage.innerHTML || '';
       this.currentAssistantMessage.innerHTML = currentText + this.formatContent(chunk.content);
@@ -332,7 +264,6 @@ class ChatApp {
       this.currentAssistantMessage.textContent = chunk.content;
     }
 
-    // Scroll to bottom
     this.chatContainer.scrollTop = this.chatContainer.scrollHeight;
   }
 
@@ -344,41 +275,21 @@ class ChatApp {
     this.chatContainer.scrollTop = this.chatContainer.scrollHeight;
   }
 
-  /**
-   * Format content with enhanced markdown support
-   */
   private formatContent(content: string): string {
-    // Escape HTML entities first
     let formatted = content
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
 
-    // Code blocks with language identifier
     formatted = formatted.replace(
       /```(\w*)\n([\s\S]*?)```/g,
-      (_, lang, code) => {
-        const language = lang || 'plaintext';
-        return `<pre><code class="language-${language}">${code.trim()}</code></pre>`;
-      }
+      (_, lang, code) => `<pre><code class="language-${lang || 'plaintext'}">${code.trim()}</code></pre>`
     );
 
-    // Inline code
     formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-    // Bold
     formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-
-    // Italic
     formatted = formatted.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-
-    // Links
-    formatted = formatted.replace(
-      /\[([^\]]+)\]\(([^)]+)\)/g,
-      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
-    );
-
-    // Line breaks
+    formatted = formatted.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
     formatted = formatted.replace(/\n/g, '<br>');
 
     return formatted;
@@ -401,16 +312,12 @@ class ChatApp {
     }
   }
 
-  /**
-   * Cancel the current stream
-   */
   private async cancelStream(): Promise<void> {
     await window.electronAPI.abortStream();
     this.setLoading(false);
   }
 }
 
-// Initialize the app
 document.addEventListener('DOMContentLoaded', () => {
   new ChatApp();
 });

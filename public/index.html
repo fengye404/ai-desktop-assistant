@@ -559,34 +559,25 @@
   </header>
 
   <div class="settings-panel" id="settingsPanel">
-    <div class="presets">
-      <button class="preset-btn" data-preset="anthropic">Anthropic Claude</button>
-      <button class="preset-btn" data-preset="openai">OpenAI</button>
-      <button class="preset-btn" data-preset="ollama">Ollama</button>
-      <button class="preset-btn" data-preset="deepseek">DeepSeek</button>
-      <button class="preset-btn" data-preset="moonshot">Moonshot</button>
-      <button class="preset-btn" data-preset="custom">自定义</button>
-    </div>
-
     <div class="settings-grid">
       <div class="setting-group">
-        <label>API Provider</label>
+        <label>API 类型</label>
         <select id="provider">
-          <option value="anthropic">Anthropic (Claude)</option>
-          <option value="openai">OpenAI Compatible</option>
+          <option value="anthropic">Claude API (Anthropic)</option>
+          <option value="openai">OpenAI 兼容 API</option>
         </select>
       </div>
       <div class="setting-group">
-        <label>Model</label>
-        <input type="text" id="model" placeholder="e.g., gpt-4o, claude-opus-4-6">
+        <label>模型</label>
+        <input type="text" id="model" placeholder="例如: claude-opus-4-6, gpt-4o">
       </div>
       <div class="setting-group">
         <label>API Key</label>
-        <input type="password" id="apiKey" placeholder="Enter your API key">
+        <input type="password" id="apiKey" placeholder="输入你的 API Key">
       </div>
       <div class="setting-group">
-        <label>Base URL (可选)</label>
-        <input type="text" id="baseURL" placeholder="自定义 API 端点">
+        <label>Base URL <span style="color: var(--text-muted);">(OpenAI 兼容 API 可选)</span></label>
+        <input type="text" id="baseURL" placeholder="留空使用默认，或输入自定义端点">
       </div>
     </div>
 

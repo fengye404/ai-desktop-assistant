@@ -5,7 +5,7 @@
 /**
  * Supported AI providers
  */
-export type Provider = 'anthropic' | 'openai' | 'custom';
+export type Provider = 'anthropic' | 'openai';
 
 /**
  * Stream chunk types
