@@ -2,15 +2,15 @@
 
 ## 项目简介
 
-AI Desktop Assistant 是一款基于 Electron + TypeScript 构建的跨平台桌面应用程序，提供统一的 AI 对话界面，支持多种 AI 提供商。
+AI Desktop Assistant 是一款基于 Electron + TypeScript 构建的跨平台桌面应用程序，提供统一的 AI 对话界面，支持两种 API 格式。
 
 **核心特性：**
-- **多提供商支持**：Anthropic Claude、OpenAI、Ollama、DeepSeek、Moonshot 等
-- **OpenAI 兼容 API**：支持任何 OpenAI 兼容的服务端点
+- **双 API 格式支持**：Claude API 和 OpenAI 兼容 API
+- **OpenAI 兼容生态**：支持 OpenAI、Ollama、DeepSeek、Moonshot、智谱 AI 等所有 OpenAI 兼容服务
 - **流式响应**：实时显示 AI 生成内容
 - **响应取消**：支持中断正在进行的响应
 - **安全存储**：使用 Electron `safeStorage` 加密 API Key
-- **Markdown 增强**：支持代码块、链接等格式化
+- **现代 UI**：Glassmorphism 设计风格
 
 ## 技术栈
 
@@ -70,6 +70,7 @@ Electron 采用多进程架构，本项目包含三个核心进程：
 │                    Preload Script                           │
 │  (preload.ts)                                               │
 │  - contextBridge 暴露安全 API                               │
+│  - 内联 IPC_CHANNELS 避免模块加载问题                       │
 │  - 精确的监听器管理（避免内存泄漏）                         │
 └─────────────────────────────────────────────────────────────┘
                            │
@@ -92,7 +93,7 @@ Electron 采用多进程架构，本项目包含三个核心进程：
 - 创建并配置 BrowserWindow (1200x800, macOS 原生标题栏)
 - 注册 IPC 处理器（消息发送、配置管理、加密存储）
 - 初始化和管理 ClaudeService 单例
-- 使用 `safeStorage` 进行敏感数据加密
+- 使用 `safeStorage` 进行敏感数据加密（含明文降级方案）
 - 处理流式响应的取消操作
 - 处理应用退出时的资源清理
 
@@ -100,14 +101,14 @@ Electron 采用多进程架构，本项目包含三个核心进程：
 
 安全桥接主进程与渲染进程：
 - 使用 `contextBridge.exposeInMainWorld` 暴露受限 API
+- **内联 IPC_CHANNELS 常量**：避免模块导入问题
 - 精确管理监听器引用，避免 `removeAllListeners` 导致的内存泄漏
-- 定义 `ElectronAPI` 接口供 TypeScript 类型检查
 
 #### 3. renderer.ts - 渲染进程
 
 前端业务逻辑：
 - `ChatApp` 类封装所有 UI 交互
-- 预设配置管理 (Anthropic, OpenAI, Ollama, DeepSeek, Moonshot, Custom)
+- 简化的配置管理（Claude API / OpenAI 兼容 API 两种类型）
 - 流式消息处理和渲染
 - 响应取消功能
 - 配置加密持久化
@@ -116,11 +117,11 @@ Electron 采用多进程架构，本项目包含三个核心进程：
 #### 4. claude-service.ts - AI 服务层
 
 核心 AI 交互逻辑：
-- 多提供商抽象：统一接口支持 Anthropic 和 OpenAI 兼容 API
+- 双提供商抽象：支持 Claude API 和 OpenAI 兼容 API
 - 流式响应：使用 AsyncGenerator 实现流式输出
 - AbortController：支持取消正在进行的请求
-- 配置管理：动态切换提供商、模型、API Key、Base URL、max_tokens
-- 连接测试：验证 API 配置有效性
+- 配置管理：动态切换提供商、模型、API Key、Base URL
+- 连接测试：15 秒超时机制，完善的错误处理
 
 #### 5. types/index.ts - 类型定义
 
@@ -139,25 +140,56 @@ Electron 采用多进程架构，本项目包含三个核心进程：
 - `EncryptionError`：加密/解密错误
 - `getErrorMessage()`：生成用户友好的错误消息
 
-## 支持的 AI 提供商
+## API 配置
 
-### 内置预设
+### 支持的 API 类型
 
-| 提供商 | Provider 类型 | 默认模型 | Base URL |
-|--------|--------------|----------|----------|
-| Anthropic Claude | `anthropic` | claude-opus-4-6 | - |
-| OpenAI | `openai` | gpt-4o | https://api.openai.com/v1 |
-| Ollama | `openai` | llama3.2 | http://localhost:11434/v1 |
-| DeepSeek | `openai` | deepseek-chat | https://api.deepseek.com/v1 |
-| Moonshot | `openai` | moonshot-v1-8k | https://api.moonshot.cn/v1 |
+| API 类型 | 说明 | 适用场景 |
+|---------|------|---------|
+| Claude API | Anthropic 官方 API 或兼容端点 | Claude 系列模型 |
+| OpenAI 兼容 API | 任何 OpenAI 兼容的服务端点 | OpenAI、Ollama、DeepSeek、Moonshot、智谱 AI 等 |
 
-### 自定义端点
+### 配置示例
 
-支持任何 OpenAI 兼容的 API 服务：
-- vLLM
-- LM Studio
-- LocalAI
-- 其他 OpenAI 兼容服务
+#### Claude API
+```
+API 类型: Claude API (Anthropic)
+模型: claude-opus-4-6
+API Key: your-api-key
+Base URL: (留空使用官方，或填写自定义端点)
+```
+
+#### OpenAI 官方
+```
+API 类型: OpenAI 兼容 API
+模型: gpt-4o
+API Key: your-openai-key
+Base URL: (留空使用默认)
+```
+
+#### DeepSeek
+```
+API 类型: OpenAI 兼容 API
+模型: deepseek-chat
+API Key: your-deepseek-key
+Base URL: https://api.deepseek.com/v1
+```
+
+#### Ollama (本地)
+```
+API 类型: OpenAI 兼容 API
+模型: llama3.2
+API Key: ollama (任意值)
+Base URL: http://localhost:11434/v1
+```
+
+#### 智谱 AI
+```
+API 类型: OpenAI 兼容 API
+模型: glm-4
+API Key: your-zhipu-key
+Base URL: https://open.bigmodel.cn/api/paas/v4
+```
 
 ## IPC 通信接口
 
@@ -169,7 +201,7 @@ Electron 采用多进程架构，本项目包含三个核心进程：
 | `send-message-stream` | message, systemPrompt? | boolean | 发送消息并流式接收响应 |
 | `abort-stream` | - | void | 取消当前流式响应 |
 | `set-model-config` | Partial\<ModelConfig\> | boolean | 设置模型配置 |
-| `test-connection` | - | {success, message} | 测试 API 连接 |
+| `test-connection` | - | {success, message} | 测试 API 连接 (15秒超时) |
 | `encrypt-data` | data | string | 加密敏感数据 |
 | `decrypt-data` | encryptedData | string | 解密敏感数据 |
 
@@ -190,7 +222,7 @@ main.ts (IPC Handler)
     ↓
 claude-service.ts (sendMessageStream)
     ↓
-AI Provider API (Anthropic/OpenAI)
+AI Provider API (Anthropic/OpenAI Compatible)
     ↓
 流式响应 → main.ts (webContents.send)
     ↓
@@ -207,6 +239,8 @@ UI 更新
 - **macOS**：使用 Keychain Access
 - **Windows**：使用 DPAPI
 - **Linux**：使用 Secret Service (如 GNOME Keyring)
+
+**降级方案**：当加密不可用时，自动降级为明文存储（带 `plain:` 前缀标识）
 
 ```typescript
 // 加密
@@ -266,6 +300,22 @@ npm run dist:win
 - 便携版 (portable)
 
 配置文件：`electron-builder.yml`
+
+## 常见问题
+
+### Settings 按钮无法点击
+
+确保应用正确加载了 preload 脚本。如果 `window.electronAPI` 为 undefined，说明 preload 脚本加载失败。
+
+### 连接测试超时
+
+1. 检查网络连接
+2. 确认 API 地址正确
+3. 确认选择了正确的 API 类型（Claude API vs OpenAI 兼容 API）
+
+### API Key 无法加密
+
+当系统不支持安全存储时（如 Linux 无 Keyring），会自动降级为明文存储。这不影响功能使用。
 
 ## 扩展方向
 
