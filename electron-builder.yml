@@ -1,0 +1,61 @@
+# Electron Builder Configuration
+# See: https://www.electron.build/configuration/configuration
+
+appId: com.ai-desktop-assistant.app
+productName: AI Desktop Assistant
+
+directories:
+  output: release
+  buildResources: public
+
+files:
+  - dist/**/*
+  - public/**/*
+  - package.json
+
+# macOS Configuration
+mac:
+  category: public.app-category.productivity
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+# Windows Configuration
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+# Linux Configuration (optional)
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
