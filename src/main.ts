@@ -6,6 +6,8 @@ import { IPC_CHANNELS } from './types';
 import type { ModelConfig, StreamChunk } from './types';
 import { ServiceNotInitializedError, StreamAbortedError } from './utils/errors';
 
+const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+
 let mainWindow: BrowserWindow | null = null;
 let claudeService: ClaudeService | null = null;
 let sessionStorage: SessionStorage | null = null;
@@ -33,7 +35,13 @@ function createWindow(): void {
     show: false,
   });
 
-  mainWindow.loadFile(path.join(__dirname, '../public/index.html'));
+  // Load renderer
+  if (isDev) {
+    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.webContents.openDevTools();
+  } else {
+    mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'));
+  }
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();

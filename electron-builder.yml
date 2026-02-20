@@ -10,7 +10,6 @@ directories:
 
 files:
   - dist/**/*
-  - public/**/*
   - package.json
   - node_modules/better-sqlite3/**/*
 

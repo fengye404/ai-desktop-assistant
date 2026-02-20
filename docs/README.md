@@ -1,6 +1,6 @@
 # AI Desktop Assistant 文档中心
 
-> 基于 Electron + TypeScript 构建的跨平台 AI 对话桌面应用
+> 基于 Electron + Vite + React + Tailwind CSS 构建的跨平台 AI 对话桌面应用
 
 ## 产品定位
 
@@ -28,6 +28,7 @@ AI Desktop Assistant 定位为类似 **Anthropic Claude Cowork** 的桌面 AI �
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| v1.4.0 | 2026-02-20 | 前端重构为 Vite + React + Tailwind + shadcn/ui + Zustand |
 | v1.3.1 | 2026-02-20 | 修复流式输出、配置持久化到 SQLite |
 | v1.3.0 | 2026-02-20 | 添加历史会话记录，SQLite 持久化存储 |
 | v1.2.0 | 2026-02-20 | 添加对话记忆功能 |
@@ -42,7 +43,7 @@ npm install
 # 编译并运行
 npm start
 
-# 开发模式
+# 开发模式 (需要同时运行 Vite 和 Electron)
 npm run dev
 ```
 
@@ -53,23 +54,34 @@ ai-desktop-assistant/
 ├── src/
 │   ├── main.ts              # Electron 主进程
 │   ├── preload.ts           # 预加载脚本 (IPC 桥接)
-│   ├── renderer.ts          # 渲染进程 (前端逻辑)
 │   ├── claude-service.ts    # AI 服务层 (多提供商支持)
 │   ├── session-storage.ts   # 会话存储服务 (SQLite)
+│   ├── tool-executor.ts     # 工具执行器
 │   ├── types/
 │   │   └── index.ts         # 集中类型定义
-│   └── utils/
-│       └── errors.ts        # 自定义错误类
-├── public/
-│   └── index.html           # UI 模板
+│   ├── utils/
+│   │   └── errors.ts        # 自定义错误类
+│   └── renderer/            # React 前端应用
+│       ├── main.tsx         # React 入口
+│       ├── App.tsx          # 根组件
+│       ├── components/      # UI 组件
+│       │   ├── ui/          # shadcn/ui 基础组件
+│       │   ├── Sidebar.tsx
+│       │   ├── ChatArea.tsx
+│       │   ├── SettingsDialog.tsx
+│       │   └── ToolApprovalDialog.tsx
+│       ├── stores/          # Zustand 状态管理
+│       │   ├── config-store.ts
+│       │   ├── session-store.ts
+│       │   └── chat-store.ts
+│       ├── lib/
+│       │   └── utils.ts     # 工具函数
+│       └── styles/
+│           └── globals.css  # 全局样式
 ├── docs/                    # 项目文档
-│   ├── README.md            # 文档索引 (本文件)
-│   ├── overview.md          # 项目概述
-│   ├── architecture/        # 架构文档
-│   ├── features/            # 功能文档
-│   ├── api/                 # API 文档
-│   └── guides/              # 使用指南
 ├── dist/                    # 编译输出
+│   ├── *.js                 # 主进程编译结果
+│   └── renderer/            # Vite 构建的前端
 └── release/                 # 打包输出
 ```
 
@@ -79,7 +91,11 @@ ai-desktop-assistant/
 |------|------|
 | 运行时 | Electron 28 |
 | 语言 | TypeScript 5.3 |
+| 前端框架 | React 19 |
+| 构建工具 | Vite 7 |
+| CSS 框架 | Tailwind CSS v4 |
+| UI 组件 | shadcn/ui (Radix UI) |
+| 状态管理 | Zustand |
 | AI SDK | @anthropic-ai/sdk, openai |
 | 数据库 | SQLite (better-sqlite3) |
-| 构建工具 | tsc (TypeScript Compiler) |
 | 打包工具 | electron-builder |
