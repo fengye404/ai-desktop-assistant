@@ -411,7 +411,7 @@
       color: var(--text-muted);
     }
 
-    .send-btn, .cancel-btn {
+    .send-btn, .cancel-btn, .clear-btn {
       border: none;
       border-radius: 14px;
       padding: 14px 28px;
@@ -448,6 +448,20 @@
     .cancel-btn:hover {
       transform: translateY(-2px);
       box-shadow: 0 6px 25px rgba(239, 68, 68, 0.4);
+    }
+
+    .clear-btn {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      box-shadow: none;
+      min-width: 70px;
+      padding: 14px 20px;
+    }
+
+    .clear-btn:hover {
+      background: var(--bg-secondary);
+      border-color: var(--accent-primary);
+      transform: translateY(-1px);
     }
 
     /* Loading */
@@ -600,6 +614,7 @@
         placeholder="输入消息... (Shift+Enter 换行)"
         rows="1"
       ></textarea>
+      <button class="clear-btn" id="clearBtn" title="清除对话">清除</button>
       <button class="send-btn" id="sendBtn">发送</button>
       <button class="cancel-btn" id="cancelBtn" style="display: none;">取消</button>
     </div>

@@ -9,6 +9,8 @@ const IPC_CHANNELS = {
   ABORT_STREAM: 'abort-stream',
   ENCRYPT_DATA: 'encrypt-data',
   DECRYPT_DATA: 'decrypt-data',
+  CLEAR_HISTORY: 'clear-history',
+  GET_HISTORY: 'get-history',
   STREAM_CHUNK: 'stream-chunk',
 } as const;
 
@@ -52,6 +54,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   decryptData: (encryptedData: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.DECRYPT_DATA, encryptedData),
+
+  clearHistory: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.CLEAR_HISTORY),
+
+  getHistory: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_HISTORY),
 });
 
 // Type definitions for the exposed API
@@ -65,4 +73,6 @@ export type ElectronAPI = {
   abortStream: () => Promise<void>;
   encryptData: (data: string) => Promise<string>;
   decryptData: (encryptedData: string) => Promise<string>;
+  clearHistory: () => Promise<void>;
+  getHistory: () => Promise<{ role: string; content: string; timestamp?: number }[]>;
 };

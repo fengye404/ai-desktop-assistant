@@ -3,6 +3,7 @@
 // Types defined locally to avoid module import issues in browser
 type Provider = 'anthropic' | 'openai';
 type ChunkType = 'text' | 'thinking' | 'error' | 'done';
+type MessageRole = 'user' | 'assistant';
 
 interface ModelConfig {
   provider: Provider;
@@ -17,6 +18,12 @@ interface StreamChunk {
   content: string;
 }
 
+interface ChatMessage {
+  role: MessageRole;
+  content: string;
+  timestamp?: number;
+}
+
 // Storage keys
 const STORAGE_KEY = 'modelConfig';
 const ENCRYPTED_API_KEY = 'encryptedApiKey';
@@ -26,6 +33,7 @@ class ChatApp {
   private messageInput: HTMLTextAreaElement;
   private sendBtn: HTMLButtonElement;
   private cancelBtn: HTMLButtonElement;
+  private clearBtn: HTMLButtonElement;
   private settingsPanel: HTMLElement;
   private settingsToggle: HTMLElement;
   private connectionStatus: HTMLElement;
@@ -42,6 +50,7 @@ class ChatApp {
     this.messageInput = document.getElementById('messageInput') as HTMLTextAreaElement;
     this.sendBtn = document.getElementById('sendBtn') as HTMLButtonElement;
     this.cancelBtn = document.getElementById('cancelBtn') as HTMLButtonElement;
+    this.clearBtn = document.getElementById('clearBtn') as HTMLButtonElement;
     this.settingsPanel = document.getElementById('settingsPanel')!;
     this.settingsToggle = document.getElementById('settingsToggle')!;
     this.connectionStatus = document.getElementById('connectionStatus')!;
@@ -93,6 +102,9 @@ class ChatApp {
 
     // Cancel button
     this.cancelBtn.addEventListener('click', () => this.cancelStream());
+
+    // Clear button
+    this.clearBtn.addEventListener('click', () => this.clearHistory());
 
     // Enter to send
     this.messageInput.addEventListener('keydown', (e) => {
@@ -319,6 +331,13 @@ class ChatApp {
   private async cancelStream(): Promise<void> {
     await window.electronAPI.abortStream();
     this.setLoading(false);
+  }
+
+  private async clearHistory(): Promise<void> {
+    await window.electronAPI.clearHistory();
+    // Clear the chat container and add welcome message
+    this.chatContainer.innerHTML = '';
+    this.addMessage('assistant', '对话已清除。有什么我可以帮你的吗？');
   }
 }
 

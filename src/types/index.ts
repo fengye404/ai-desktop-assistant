@@ -8,6 +8,20 @@
 export type Provider = 'anthropic' | 'openai';
 
 /**
+ * Message role type
+ */
+export type MessageRole = 'user' | 'assistant';
+
+/**
+ * Chat message structure for conversation history
+ */
+export interface ChatMessage {
+  role: MessageRole;
+  content: string;
+  timestamp?: number;
+}
+
+/**
  * Stream chunk types
  */
 export type ChunkType = 'text' | 'thinking' | 'error' | 'done';
@@ -51,6 +65,8 @@ export const IPC_CHANNELS = {
   ABORT_STREAM: 'abort-stream',
   ENCRYPT_DATA: 'encrypt-data',
   DECRYPT_DATA: 'decrypt-data',
+  CLEAR_HISTORY: 'clear-history',
+  GET_HISTORY: 'get-history',
 
   // Main -> Renderer
   STREAM_CHUNK: 'stream-chunk',
@@ -69,6 +85,8 @@ export interface ElectronAPI {
   abortStream: () => Promise<void>;
   encryptData: (data: string) => Promise<string>;
   decryptData: (encryptedData: string) => Promise<string>;
+  clearHistory: () => Promise<void>;
+  getHistory: () => Promise<ChatMessage[]>;
 }
 
 /**

@@ -102,6 +102,20 @@ ipcMain.handle(IPC_CHANNELS.TEST_CONNECTION, async () => {
   return await claudeService.testConnection();
 });
 
+ipcMain.handle(IPC_CHANNELS.CLEAR_HISTORY, async () => {
+  if (!claudeService) {
+    throw new ServiceNotInitializedError('Claude service');
+  }
+  claudeService.clearHistory();
+});
+
+ipcMain.handle(IPC_CHANNELS.GET_HISTORY, async () => {
+  if (!claudeService) {
+    throw new ServiceNotInitializedError('Claude service');
+  }
+  return claudeService.getHistory();
+});
+
 // Encryption handlers for secure storage
 ipcMain.handle(IPC_CHANNELS.ENCRYPT_DATA, async (_event, data: string): Promise<string> => {
   try {

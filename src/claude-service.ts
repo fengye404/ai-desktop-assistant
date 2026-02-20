@@ -1,16 +1,20 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
-import type { ModelConfig, StreamChunk } from './types';
+import type { ModelConfig, StreamChunk, ChatMessage } from './types';
 import { StreamAbortedError, APIKeyError } from './utils/errors';
 
 // Default max tokens for responses
 const DEFAULT_MAX_TOKENS = 4096;
+
+// Maximum number of messages to keep in history
+const MAX_HISTORY_LENGTH = 50;
 
 export class ClaudeService {
   private anthropicClient: Anthropic | null = null;
   private openaiClient: OpenAI | null = null;
   private config: ModelConfig;
   private abortController: AbortController | null = null;
+  private messageHistory: ChatMessage[] = [];
 
   constructor() {
     this.config = {
@@ -19,6 +23,36 @@ export class ClaudeService {
       model: 'claude-opus-4-6',
       maxTokens: DEFAULT_MAX_TOKENS,
     };
+  }
+
+  /**
+   * Get the current message history
+   */
+  getHistory(): ChatMessage[] {
+    return [...this.messageHistory];
+  }
+
+  /**
+   * Clear the message history
+   */
+  clearHistory(): void {
+    this.messageHistory = [];
+  }
+
+  /**
+   * Add a message to history
+   */
+  private addToHistory(role: 'user' | 'assistant', content: string): void {
+    this.messageHistory.push({
+      role,
+      content,
+      timestamp: Date.now(),
+    });
+
+    // Trim history if it exceeds max length
+    if (this.messageHistory.length > MAX_HISTORY_LENGTH) {
+      this.messageHistory = this.messageHistory.slice(-MAX_HISTORY_LENGTH);
+    }
   }
 
   setConfig(config: Partial<ModelConfig>): void {
@@ -74,15 +108,38 @@ export class ClaudeService {
     // Create new abort controller for this stream
     this.abortController = new AbortController();
 
+    // Add user message to history
+    this.addToHistory('user', message);
+
+    // Collect assistant response
+    let assistantResponse = '';
+
     try {
       if (this.config.provider === 'anthropic') {
-        yield* this.streamAnthropic(message, systemPrompt);
+        for await (const chunk of this.streamAnthropic(systemPrompt)) {
+          if (chunk.type === 'text') {
+            assistantResponse += chunk.content;
+          }
+          yield chunk;
+        }
       } else {
-        yield* this.streamOpenAI(message, systemPrompt);
+        for await (const chunk of this.streamOpenAI(systemPrompt)) {
+          if (chunk.type === 'text') {
+            assistantResponse += chunk.content;
+          }
+          yield chunk;
+        }
+      }
+
+      // Add assistant response to history
+      if (assistantResponse) {
+        this.addToHistory('assistant', assistantResponse);
       }
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new StreamAbortedError();
+      // Remove the user message if there was an error
+      if (error instanceof StreamAbortedError) {
+        this.messageHistory.pop();
+        throw error;
       }
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       yield { type: 'error', content: `Error: ${errorMessage}` };
@@ -95,18 +152,23 @@ export class ClaudeService {
    * Stream using Anthropic API
    */
   private async *streamAnthropic(
-    message: string,
     systemPrompt?: string,
   ): AsyncGenerator<StreamChunk, void, unknown> {
     const client = this.getAnthropicClient();
     const maxTokens = this.config.maxTokens ?? DEFAULT_MAX_TOKENS;
+
+    // Convert message history to Anthropic format
+    const messages = this.messageHistory.map((msg) => ({
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content,
+    }));
 
     const stream = client.messages.stream(
       {
         model: this.config.model,
         max_tokens: maxTokens,
         system: systemPrompt || 'You are a helpful AI assistant.',
-        messages: [{ role: 'user', content: message }],
+        messages,
       },
       {
         signal: this.abortController?.signal,
@@ -129,19 +191,24 @@ export class ClaudeService {
    * Stream using OpenAI-compatible API
    */
   private async *streamOpenAI(
-    message: string,
     systemPrompt?: string,
   ): AsyncGenerator<StreamChunk, void, unknown> {
     const client = this.getOpenAIClient();
     const maxTokens = this.config.maxTokens ?? DEFAULT_MAX_TOKENS;
 
+    // Convert message history to OpenAI format
+    const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+      { role: 'system', content: systemPrompt || 'You are a helpful AI assistant.' },
+      ...this.messageHistory.map((msg) => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content,
+      })),
+    ];
+
     const stream = await client.chat.completions.create(
       {
         model: this.config.model,
-        messages: [
-          { role: 'system', content: systemPrompt || 'You are a helpful AI assistant.' },
-          { role: 'user', content: message },
-        ],
+        messages,
         stream: true,
         max_tokens: maxTokens,
       },
