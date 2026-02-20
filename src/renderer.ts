@@ -158,48 +158,59 @@ class ChatApp {
    * Save config to secure storage
    */
   private async saveConfig(): Promise<void> {
-    const config: Partial<ModelConfig> = {
-      provider: this.providerSelect.value as ModelConfig['provider'],
-      model: this.modelInput.value,
-      baseURL: this.baseURLInput.value || undefined,
-    };
+    try {
+      const config: Partial<ModelConfig> = {
+        provider: this.providerSelect.value as ModelConfig['provider'],
+        model: this.modelInput.value,
+        baseURL: this.baseURLInput.value || undefined,
+      };
 
-    // Save non-sensitive config to localStorage
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+      // Save non-sensitive config to localStorage
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
 
-    // Encrypt and save API key
-    const apiKey = this.apiKeyInput.value;
-    if (apiKey) {
-      const encryptedKey = await window.electronAPI.encryptData(apiKey);
-      localStorage.setItem(ENCRYPTED_API_KEY, encryptedKey);
-    } else {
-      localStorage.removeItem(ENCRYPTED_API_KEY);
+      // Encrypt and save API key
+      const apiKey = this.apiKeyInput.value;
+      if (apiKey) {
+        const encryptedKey = await window.electronAPI.encryptData(apiKey);
+        localStorage.setItem(ENCRYPTED_API_KEY, encryptedKey);
+      } else {
+        localStorage.removeItem(ENCRYPTED_API_KEY);
+      }
+
+      // Apply to backend with API key
+      await window.electronAPI.setModelConfig({
+        ...config,
+        apiKey: apiKey,
+      });
+
+      this.updateConnectionStatus(true, '已保存');
+      this.settingsPanel.classList.remove('open');
+    } catch (error) {
+      console.error('Save config error:', error);
+      this.updateConnectionStatus(false, '保存失败');
     }
-
-    // Apply to backend with API key
-    await window.electronAPI.setModelConfig({
-      ...config,
-      apiKey: apiKey,
-    });
-
-    this.updateConnectionStatus(true, '已保存');
-    this.settingsPanel.classList.remove('open');
   }
 
   private async testConnection(): Promise<void> {
-    this.updateConnectionStatus(false, '测试中...');
+    try {
+      this.updateConnectionStatus(false, '测试中...');
 
-    const config: Partial<ModelConfig> = {
-      provider: this.providerSelect.value as ModelConfig['provider'],
-      model: this.modelInput.value,
-      apiKey: this.apiKeyInput.value,
-      baseURL: this.baseURLInput.value || undefined,
-    };
+      const config: Partial<ModelConfig> = {
+        provider: this.providerSelect.value as ModelConfig['provider'],
+        model: this.modelInput.value,
+        apiKey: this.apiKeyInput.value,
+        baseURL: this.baseURLInput.value || undefined,
+      };
 
-    await window.electronAPI.setModelConfig(config);
+      await window.electronAPI.setModelConfig(config);
 
-    const result = await window.electronAPI.testConnection();
-    this.updateConnectionStatus(result.success, result.success ? '连接成功' : '连接失败');
+      const result = await window.electronAPI.testConnection();
+      this.updateConnectionStatus(result.success, result.success ? '连接成功' : result.message);
+    } catch (error) {
+      console.error('Test connection error:', error);
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
+      this.updateConnectionStatus(false, `测试失败: ${errorMessage}`);
+    }
   }
 
   private updateConnectionStatus(connected: boolean, text: string): void {

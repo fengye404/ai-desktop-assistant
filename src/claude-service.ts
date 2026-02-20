@@ -169,6 +169,9 @@ export class ClaudeService {
   async sendMessage(message: string, systemPrompt?: string): Promise<string> {
     const chunks: string[] = [];
     for await (const chunk of this.sendMessageStream(message, systemPrompt)) {
+      if (chunk.type === 'error') {
+        throw new Error(chunk.content);
+      }
       if (chunk.type === 'text') {
         chunks.push(chunk.content);
       }
@@ -185,8 +188,8 @@ export class ClaudeService {
     try {
       await Promise.race([
         this.sendMessage('Hi'),
-        new Promise<string>((_, reject) =>
-          setTimeout(() => reject(new Error('Connection timeout')), timeout)
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('连接超时，请检查网络或 API 地址')), timeout)
         ),
       ]);
       return { success: true, message: '连接成功！' };
