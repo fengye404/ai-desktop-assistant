@@ -182,6 +182,7 @@ export class ClaudeService {
         this.sessionStorage.updateMessages(messages);
         throw error;
       }
+      console.error('[claude-service] Stream error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       yield { type: 'error', content: `Error: ${errorMessage}` };
     } finally {

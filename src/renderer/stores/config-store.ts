@@ -40,22 +40,30 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     try {
       const config = await window.electronAPI.configLoad();
       if (config && Object.keys(config).length > 0) {
-        set({
-          provider: (config.provider as Provider) || 'anthropic',
-          model: config.model || '',
-          baseURL: config.baseURL || '',
-        });
+        const provider = (config.provider as Provider) || 'anthropic';
+        const model = config.model || '';
+        const baseURL = config.baseURL || '';
+        let apiKey = '';
+
+        set({ provider, model, baseURL });
 
         if (config.apiKey) {
           try {
-            const decryptedKey = await window.electronAPI.decryptData(config.apiKey);
-            set({ apiKey: decryptedKey });
+            apiKey = await window.electronAPI.decryptData(config.apiKey);
+            set({ apiKey });
           } catch {
             console.warn('Failed to decrypt API key');
           }
         }
 
-        if (config.provider && config.model) {
+        // 初始化后端服务配置
+        if (apiKey) {
+          await window.electronAPI.setModelConfig({
+            provider,
+            model,
+            baseURL: baseURL || undefined,
+            apiKey,
+          });
           set({ connectionStatus: { connected: true, message: '已配置' } });
         }
       }

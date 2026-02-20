@@ -20,5 +20,5 @@
     "noUnusedParameters": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/renderer"]
+  "exclude": ["node_modules", "dist", "src/renderer", "src/renderer.ts"]
 }

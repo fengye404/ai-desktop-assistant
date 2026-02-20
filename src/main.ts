@@ -6,7 +6,8 @@ import { IPC_CHANNELS } from './types';
 import type { ModelConfig, StreamChunk } from './types';
 import { ServiceNotInitializedError, StreamAbortedError } from './utils/errors';
 
-const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+// 只有显式设置 VITE_DEV_SERVER=true 才使用开发服务器
+const useViteDevServer = process.env.VITE_DEV_SERVER === 'true';
 
 let mainWindow: BrowserWindow | null = null;
 let claudeService: ClaudeService | null = null;
@@ -36,12 +37,20 @@ function createWindow(): void {
   });
 
   // Load renderer
-  if (isDev) {
+  if (useViteDevServer) {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'));
+    // 按 Cmd+Option+I 打开开发者工具
   }
+
+  // 快捷键打开开发者工具
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.meta && input.alt && input.key === 'i') {
+      mainWindow?.webContents.toggleDevTools();
+    }
+  });
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
@@ -139,6 +148,7 @@ ipcMain.handle(IPC_CHANNELS.SEND_MESSAGE_STREAM, async (_event, message: string,
 
     return true;
   } catch (error) {
+    console.error('[main] Stream error:', error);
     if (error instanceof StreamAbortedError) {
       mainWindow?.webContents.send(IPC_CHANNELS.STREAM_CHUNK, {
         type: 'error',
@@ -146,6 +156,11 @@ ipcMain.handle(IPC_CHANNELS.SEND_MESSAGE_STREAM, async (_event, message: string,
       } as StreamChunk);
       return false;
     }
+    // 发送错误到渲染进程
+    mainWindow?.webContents.send(IPC_CHANNELS.STREAM_CHUNK, {
+      type: 'error',
+      content: error instanceof Error ? error.message : 'Unknown error',
+    } as StreamChunk);
     throw error;
   }
 });

@@ -40,42 +40,50 @@ export function Sidebar() {
   };
 
   return (
-    <div className="w-72 min-w-72 border-r border-border bg-card/50 flex flex-col drag-region">
+    <div className="w-64 min-w-64 border-r border-border/50 sidebar flex flex-col drag-region">
       {/* Header with macOS traffic light space */}
-      <div className="pt-12 px-4 pb-4 border-b border-border no-drag">
-        <Button onClick={() => createSession()} className="w-full gap-2" size="lg">
+      <div className="pt-10 px-3 pb-3 no-drag">
+        <Button 
+          onClick={() => createSession()} 
+          className="w-full gap-2 h-10 bg-secondary hover:bg-secondary/80 text-foreground border border-border/50" 
+          variant="outline"
+        >
           <Plus className="h-4 w-4" />
-          新对话
+          <span className="font-medium">新对话</span>
         </Button>
       </div>
 
       {/* Session List */}
       <ScrollArea className="flex-1 no-drag">
-        <div className="p-2 space-y-1">
+        <div className="px-2 pb-2 space-y-1">
           {sessions.length === 0 ? (
-            <div className="text-center text-muted-foreground py-8 text-sm">暂无对话记录</div>
+            <div className="text-center text-muted-foreground py-12 text-sm">
+              <MessageSquare className="h-8 w-8 mx-auto mb-3 opacity-30" />
+              <p>暂无对话记录</p>
+            </div>
           ) : (
             sessions.map((session) => (
               <div
                 key={session.id}
                 onClick={() => switchSession(session.id)}
                 className={cn(
-                  'group p-3 rounded-lg cursor-pointer transition-colors border',
-                  session.id === currentSessionId
-                    ? 'bg-primary/10 border-primary/30'
-                    : 'bg-transparent border-transparent hover:bg-accent/50'
+                  'group px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-150 session-item',
+                  session.id === currentSessionId && 'active'
                 )}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <MessageSquare className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <span className="font-medium text-sm truncate">{session.title}</span>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <MessageSquare className={cn(
+                      "h-4 w-4 shrink-0 transition-colors",
+                      session.id === currentSessionId ? "text-primary" : "text-muted-foreground"
+                    )} />
+                    <span className="text-sm truncate font-medium">{session.title}</span>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6"
+                      className="h-6 w-6 text-muted-foreground hover:text-foreground"
                       onClick={(e) => handleRename(e, session.id)}
                     >
                       <Pencil className="h-3 w-3" />
@@ -83,22 +91,29 @@ export function Sidebar() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 hover:text-destructive"
+                      className="h-6 w-6 text-muted-foreground hover:text-destructive"
                       onClick={(e) => handleDelete(e, session.id)}
                     >
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
                 </div>
-                <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                  <span className="truncate max-w-[150px]">{session.preview || '无消息'}</span>
-                  <span className="shrink-0">{formatTime(session.updatedAt)}</span>
+                <div className="mt-1.5 flex items-center justify-between text-xs text-muted-foreground">
+                  <span className="truncate max-w-[140px] opacity-70">{session.preview || '无消息'}</span>
+                  <span className="shrink-0 opacity-50">{formatTime(session.updatedAt)}</span>
                 </div>
               </div>
             ))
           )}
         </div>
       </ScrollArea>
+
+      {/* Footer */}
+      <div className="p-3 border-t border-border/30 no-drag">
+        <p className="text-xs text-muted-foreground/50 text-center">
+          AI Desktop Assistant
+        </p>
+      </div>
     </div>
   );
 }

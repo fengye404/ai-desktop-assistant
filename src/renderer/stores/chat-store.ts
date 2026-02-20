@@ -38,19 +38,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
   toolApprovalRequest: null,
 
   sendMessage: async (message: string) => {
-    const { apiKey } = window.electronAPI ? await window.electronAPI.configLoad() : { apiKey: '' };
-    if (!apiKey) {
-      console.error('API Key not configured');
-      return;
-    }
+    // 立即显示用户消息
+    const sessionStore = useSessionStore.getState();
+    const currentMessages = sessionStore.currentMessages;
+    sessionStore.setCurrentMessages([
+      ...currentMessages,
+      { role: 'user', content: message, timestamp: Date.now() }
+    ]);
 
     set({ isLoading: true, streamingContent: '' });
 
     try {
       await window.electronAPI.sendMessageStream(message);
     } catch (error) {
-      console.error('Send message error:', error);
-      set({ isLoading: false });
+      console.error('[chat-store] Send message error:', error);
+      set({ isLoading: false, streamingContent: '' });
     }
   },
 
@@ -74,19 +76,40 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   initStreamListener: () => {
     window.electronAPI.onStreamChunk((chunk: StreamChunk) => {
-      const { streamingContent } = get();
-
       if (chunk.type === 'done') {
+        const sessionStore = useSessionStore.getState();
+        const { streamingContent } = get();
+        
+        // 先将流式内容添加到消息列表，避免闪烁
+        if (streamingContent) {
+          const currentMessages = sessionStore.currentMessages;
+          sessionStore.setCurrentMessages([
+            ...currentMessages,
+            { role: 'assistant', content: streamingContent, timestamp: Date.now() }
+          ]);
+        }
+        
+        // 清空状态
         set({ isLoading: false, streamingContent: '' });
-        useSessionStore.getState().refreshSessions();
+        
+        // 后台刷新确保数据一致性
+        sessionStore.refreshSessions();
         return;
       }
 
       if (chunk.type === 'text') {
-        set({ streamingContent: streamingContent + chunk.content });
+        // 每次都获取最新的 streamingContent
+        set((state) => ({ streamingContent: state.streamingContent + chunk.content }));
       } else if (chunk.type === 'error') {
-        console.error('Stream error:', chunk.content);
-        set({ isLoading: false });
+        console.error('[chat-store] Stream error:', chunk.content);
+        // 显示错误信息给用户
+        const sessionStore = useSessionStore.getState();
+        const currentMessages = sessionStore.currentMessages;
+        sessionStore.setCurrentMessages([
+          ...currentMessages,
+          { role: 'assistant', content: `❌ ${chunk.content}`, timestamp: Date.now() }
+        ]);
+        set({ isLoading: false, streamingContent: '' });
       }
     });
 
