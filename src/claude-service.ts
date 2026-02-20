@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import type { ModelConfig, StreamChunk, ChatMessage } from './types';
 import { StreamAbortedError, APIKeyError } from './utils/errors';
+import { SessionStorage } from './session-storage';
 
 // Default max tokens for responses
 const DEFAULT_MAX_TOKENS = 4096;
@@ -14,9 +15,10 @@ export class ClaudeService {
   private openaiClient: OpenAI | null = null;
   private config: ModelConfig;
   private abortController: AbortController | null = null;
-  private messageHistory: ChatMessage[] = [];
+  private sessionStorage: SessionStorage;
 
-  constructor() {
+  constructor(sessionStorage: SessionStorage) {
+    this.sessionStorage = sessionStorage;
     this.config = {
       provider: 'anthropic',
       apiKey: process.env.ANTHROPIC_API_KEY || '',
@@ -26,33 +28,42 @@ export class ClaudeService {
   }
 
   /**
+   * Get message history from current session
+   */
+  private get messageHistory(): ChatMessage[] {
+    return this.sessionStorage.getMessages();
+  }
+
+  /**
    * Get the current message history
    */
   getHistory(): ChatMessage[] {
-    return [...this.messageHistory];
+    return this.sessionStorage.getMessages();
   }
 
   /**
    * Clear the message history
    */
   clearHistory(): void {
-    this.messageHistory = [];
+    this.sessionStorage.clearMessages();
   }
 
   /**
    * Add a message to history
    */
   private addToHistory(role: 'user' | 'assistant', content: string): void {
-    this.messageHistory.push({
+    const messages = this.sessionStorage.getMessages();
+    messages.push({
       role,
       content,
       timestamp: Date.now(),
     });
 
     // Trim history if it exceeds max length
-    if (this.messageHistory.length > MAX_HISTORY_LENGTH) {
-      this.messageHistory = this.messageHistory.slice(-MAX_HISTORY_LENGTH);
-    }
+    const trimmedMessages =
+      messages.length > MAX_HISTORY_LENGTH ? messages.slice(-MAX_HISTORY_LENGTH) : messages;
+
+    this.sessionStorage.updateMessages(trimmedMessages);
   }
 
   setConfig(config: Partial<ModelConfig>): void {
@@ -138,7 +149,9 @@ export class ClaudeService {
     } catch (error) {
       // Remove the user message if there was an error
       if (error instanceof StreamAbortedError) {
-        this.messageHistory.pop();
+        const messages = this.sessionStorage.getMessages();
+        messages.pop();
+        this.sessionStorage.updateMessages(messages);
         throw error;
       }
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

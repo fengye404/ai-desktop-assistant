@@ -28,6 +28,8 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.10.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
@@ -39,6 +41,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
+    "better-sqlite3": "^12.6.2",
     "openai": "^4.104.0"
   },
   "build": {
@@ -57,11 +60,17 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "public/icon.icns"
@@ -70,11 +79,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "public/icon.ico"

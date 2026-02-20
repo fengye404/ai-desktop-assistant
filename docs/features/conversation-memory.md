@@ -1,16 +1,16 @@
 # 对话记忆功能
 
-> v1.2.0 新增功能
+> v1.2.0 新增功能，v1.3.0 升级为 SQLite 持久化存储
 
 ## 功能概述
 
-对话记忆功能使 AI 能够记住之前的对话内容，实现真正的多轮对话体验。在此之前，每次发送消息都是独立的，AI 无法理解上下文。
+对话记忆功能使 AI 能够记住之前的对话内容，实现真正的多轮对话体验。v1.3.0 版本升级为 SQLite 数据库存储，支持会话持久化和历史会话管理。
 
 ## 实现原理
 
 ### 消息历史管理
 
-在 `ClaudeService` 中维护一个消息历史数组：
+消息历史现在由 `SessionStorage` 服务管理，使用 SQLite 数据库持久化存储：
 
 ```typescript
 interface ChatMessage {
@@ -19,177 +19,161 @@ interface ChatMessage {
   timestamp?: number;
 }
 
-private messageHistory: ChatMessage[] = [];
+interface Session {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: number;
+  updatedAt: number;
+}
+```
+
+### 存储架构
+
+```
+SessionStorage (SQLite)
+├── sessions 表
+│   ├── id (主键)
+│   ├── title
+│   ├── created_at
+│   └── updated_at
+└── messages 表
+    ├── id (自增主键)
+    ├── session_id (外键)
+    ├── role
+    ├── content
+    └── timestamp
 ```
 
 ### 消息流程
 
-1. **用户发送消息**：消息被添加到 `messageHistory`
-2. **发送给 AI**：将完整的 `messageHistory` 发送给 AI API
-3. **收到响应**：AI 的回复也被添加到 `messageHistory`
-4. **历史限制**：自动维护最多 50 条消息，避免超出上下文窗口
+1. **用户发送消息**：消息被添加到当前会话
+2. **发送给 AI**：将当前会话的完整消息历史发送给 AI API
+3. **收到响应**：AI 的回复被添加到当前会话
+4. **自动保存**：所有变更自动持久化到 SQLite 数据库
+5. **历史限制**：自动维护最多 50 条消息，避免超出上下文窗口
 
 ### 数据流
 
 ```
-用户消息 → addToHistory('user', message)
+用户消息 → SessionStorage.updateMessages()
     ↓
-发送完整 messageHistory 给 AI
+发送完整会话历史给 AI
     ↓
 收集 AI 流式响应
     ↓
-addToHistory('assistant', response)
+SessionStorage.updateMessages() → SQLite 持久化
 ```
 
 ## 修改的文件
 
-### 1. src/types/index.ts
+### 1. src/session-storage.ts (新增)
 
-新增类型定义：
+SQLite 会话存储服务：
 
 ```typescript
-export type MessageRole = 'user' | 'assistant';
+import Database from 'better-sqlite3';
 
-export interface ChatMessage {
-  role: MessageRole;
-  content: string;
-  timestamp?: number;
+export class SessionStorage {
+  private db: Database.Database;
+  private currentSessionId: string | null = null;
+
+  constructor() {
+    const dbPath = path.join(app.getPath('userData'), 'sessions.db');
+    this.db = new Database(dbPath);
+    this.initDatabase();
+  }
+
+  // 初始化数据库表
+  private initDatabase(): void { ... }
+  
+  // 会话管理
+  listSessions(): SessionMeta[] { ... }
+  createSession(title?: string): Session { ... }
+  switchSession(id: string): Session | null { ... }
+  deleteSession(id: string): boolean { ... }
+  renameSession(id: string, title: string): boolean { ... }
+  
+  // 消息管理
+  getMessages(): ChatMessage[] { ... }
+  updateMessages(messages: ChatMessage[]): void { ... }
+  clearMessages(): void { ... }
 }
 ```
 
-新增 IPC 通道：
+### 2. src/types/index.ts
+
+新增会话相关类型：
 
 ```typescript
+export interface Session {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SessionMeta {
+  id: string;
+  title: string;
+  messageCount: number;
+  createdAt: number;
+  updatedAt: number;
+  preview: string;
+}
+
 export const IPC_CHANNELS = {
   // ...existing channels
-  CLEAR_HISTORY: 'clear-history',
-  GET_HISTORY: 'get-history',
+  SESSION_LIST: 'session-list',
+  SESSION_GET: 'session-get',
+  SESSION_CREATE: 'session-create',
+  SESSION_DELETE: 'session-delete',
+  SESSION_SWITCH: 'session-switch',
+  SESSION_RENAME: 'session-rename',
 };
 ```
 
-### 2. src/claude-service.ts
+### 3. src/claude-service.ts
 
-新增消息历史管理：
+改为使用 SessionStorage：
 
 ```typescript
-private messageHistory: ChatMessage[] = [];
+export class ClaudeService {
+  private sessionStorage: SessionStorage;
 
-// 获取历史
-getHistory(): ChatMessage[] {
-  return [...this.messageHistory];
-}
+  constructor(sessionStorage: SessionStorage) {
+    this.sessionStorage = sessionStorage;
+  }
 
-// 清除历史
-clearHistory(): void {
-  this.messageHistory = [];
-}
+  private get messageHistory(): ChatMessage[] {
+    return this.sessionStorage.getMessages();
+  }
 
-// 添加到历史
-private addToHistory(role: 'user' | 'assistant', content: string): void {
-  this.messageHistory.push({ role, content, timestamp: Date.now() });
-  
-  // 限制历史长度
-  if (this.messageHistory.length > MAX_HISTORY_LENGTH) {
-    this.messageHistory = this.messageHistory.slice(-MAX_HISTORY_LENGTH);
+  private addToHistory(role: 'user' | 'assistant', content: string): void {
+    const messages = this.sessionStorage.getMessages();
+    messages.push({ role, content, timestamp: Date.now() });
+    // 限制历史长度
+    const trimmed = messages.slice(-MAX_HISTORY_LENGTH);
+    this.sessionStorage.updateMessages(trimmed);
   }
 }
 ```
-
-修改 API 调用，发送完整历史：
-
-```typescript
-// Anthropic 格式
-const messages = this.messageHistory.map((msg) => ({
-  role: msg.role,
-  content: msg.content,
-}));
-
-// OpenAI 格式
-const messages = [
-  { role: 'system', content: systemPrompt },
-  ...this.messageHistory.map((msg) => ({
-    role: msg.role,
-    content: msg.content,
-  })),
-];
-```
-
-### 3. src/main.ts
-
-新增 IPC 处理器：
-
-```typescript
-ipcMain.handle(IPC_CHANNELS.CLEAR_HISTORY, async () => {
-  claudeService.clearHistory();
-});
-
-ipcMain.handle(IPC_CHANNELS.GET_HISTORY, async () => {
-  return claudeService.getHistory();
-});
-```
-
-### 4. src/preload.ts
-
-暴露新 API：
-
-```typescript
-clearHistory: () => ipcRenderer.invoke(IPC_CHANNELS.CLEAR_HISTORY),
-getHistory: () => ipcRenderer.invoke(IPC_CHANNELS.GET_HISTORY),
-```
-
-### 5. src/renderer.ts
-
-新增清除功能：
-
-```typescript
-private async clearHistory(): Promise<void> {
-  await window.electronAPI.clearHistory();
-  this.chatContainer.innerHTML = '';
-  this.addMessage('assistant', '对话已清除。有什么我可以帮你的吗？');
-}
-```
-
-### 6. public/index.html
-
-新增清除按钮：
-
-```html
-<button class="clear-btn" id="clearBtn" title="清除对话">清除</button>
-```
-
-## 使用方式
-
-### 多轮对话
-
-正常对话即可，AI 会自动记住上下文：
-
-```
-用户: 我叫张三
-AI: 你好张三！很高兴认识你。
-
-用户: 我叫什么名字？
-AI: 你刚才告诉我你叫张三。
-```
-
-### 清除对话
-
-点击输入框旁边的"清除"按钮，可以清空对话历史，开始新的对话。
 
 ## 配置参数
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| MAX_HISTORY_LENGTH | 50 | 最大保留消息数量 |
+| MAX_HISTORY_LENGTH | 50 | 单会话最大保留消息数量 |
+| 数据库位置 | userData/sessions.db | SQLite 数据库文件路径 |
 
 ## 注意事项
 
-1. **上下文窗口限制**：不同模型有不同的上下文窗口大小，过长的对话可能导致 API 错误
-2. **内存使用**：消息历史存储在内存中，应用重启后会丢失
+1. **数据持久化**：所有对话现在会自动保存，重启应用后仍可访问
+2. **上下文窗口限制**：不同模型有不同的上下文窗口大小
 3. **取消响应**：如果用户取消了响应，该轮用户消息会从历史中移除
+4. **数据库位置**：数据库存储在用户数据目录，打包后独立于应用
 
-## 未来改进
+## 相关功能
 
-- [ ] 会话持久化（保存到本地文件或数据库）
-- [ ] 多会话管理
-- [ ] 历史消息导出
-- [ ] 自定义历史长度限制
+- [历史会话记录](./session-history.md) - 侧边栏会话管理功能

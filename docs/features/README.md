@@ -7,6 +7,7 @@
 | 功能 | 文档 | 说明 |
 |------|------|------|
 | 对话记忆 | [conversation-memory.md](./conversation-memory.md) | 多轮对话上下文记忆 |
+| 历史会话 | [session-history.md](./session-history.md) | 侧边栏会话管理 |
 | 流式响应 | [streaming.md](./streaming.md) | 实时显示 AI 生成内容 |
 | 多 API 支持 | [multi-provider.md](./multi-provider.md) | 支持多种 AI 服务商 |
 
@@ -23,7 +24,19 @@
 
 详见：[对话记忆功能](./conversation-memory.md)
 
-### 2. 双 API 格式支持
+### 2. 历史会话记录 (v1.3.0 新增)
+
+侧边栏会话管理，支持多会话切换和持久化存储：
+
+- 侧边栏显示历史会话列表
+- SQLite 数据库持久化存储
+- 支持创建、切换、删除、重命名会话
+- 自动从首条消息生成会话标题
+- 相对时间显示
+
+详见：[历史会话记录](./session-history.md)
+
+### 3. 双 API 格式支持
 
 - **Claude API**：Anthropic 官方 API
 - **OpenAI 兼容 API**：支持所有 OpenAI 兼容服务
@@ -34,21 +47,22 @@
   - 智谱 AI
   - 等等...
 
-### 3. 流式响应
+### 4. 流式响应
 
 - 使用 AsyncGenerator 实现
 - 实时显示生成内容
 - 支持随时取消响应
 
-### 4. 安全存储
+### 5. 安全存储
 
 - API Key 使用系统级加密存储
 - macOS: Keychain
 - Windows: DPAPI
 - Linux: Secret Service
 
-### 5. 现代 UI
+### 6. 现代 UI
 
 - Glassmorphism 设计风格
 - 响应式布局
 - Markdown 渲染支持
+- 侧边栏会话管理

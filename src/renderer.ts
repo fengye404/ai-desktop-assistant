@@ -24,6 +24,23 @@ interface ChatMessage {
   timestamp?: number;
 }
 
+interface SessionMeta {
+  id: string;
+  title: string;
+  messageCount: number;
+  createdAt: number;
+  updatedAt: number;
+  preview: string;
+}
+
+interface Session {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 // Storage keys
 const STORAGE_KEY = 'modelConfig';
 const ENCRYPTED_API_KEY = 'encryptedApiKey';
@@ -42,8 +59,12 @@ class ChatApp {
   private modelInput: HTMLInputElement;
   private apiKeyInput: HTMLInputElement;
   private baseURLInput: HTMLInputElement;
+  private sessionList: HTMLElement;
+  private newChatBtn: HTMLButtonElement;
   private isLoading = false;
   private currentAssistantMessage: HTMLElement | null = null;
+  private currentSessionId: string | null = null;
+  private streamingContent = ''; // Accumulate streaming content
 
   constructor() {
     this.chatContainer = document.getElementById('chatContainer')!;
@@ -59,9 +80,12 @@ class ChatApp {
     this.modelInput = document.getElementById('model') as HTMLInputElement;
     this.apiKeyInput = document.getElementById('apiKey') as HTMLInputElement;
     this.baseURLInput = document.getElementById('baseURL') as HTMLInputElement;
+    this.sessionList = document.getElementById('sessionList')!;
+    this.newChatBtn = document.getElementById('newChatBtn') as HTMLButtonElement;
 
     this.initEventListeners();
     this.loadConfig();
+    this.loadSessionList();
   }
 
   private initEventListeners(): void {
@@ -105,6 +129,9 @@ class ChatApp {
 
     // Clear button
     this.clearBtn.addEventListener('click', () => this.clearHistory());
+
+    // New chat button
+    this.newChatBtn.addEventListener('click', () => this.createNewSession());
 
     // Enter to send
     this.messageInput.addEventListener('keydown', (e) => {
@@ -246,6 +273,7 @@ class ChatApp {
     this.setLoading(true);
 
     this.currentAssistantMessage = null;
+    this.streamingContent = ''; // Reset streaming content
 
     try {
       await window.electronAPI.sendMessageStream(message);
@@ -259,7 +287,14 @@ class ChatApp {
 
   private handleStreamChunk(chunk: StreamChunk): void {
     if (chunk.type === 'done') {
+      // Format the complete content when done
+      if (this.currentAssistantMessage && this.streamingContent) {
+        this.currentAssistantMessage.innerHTML = this.formatContent(this.streamingContent);
+      }
+      this.streamingContent = '';
       this.setLoading(false);
+      // Refresh session list to update preview
+      this.loadSessionList();
       return;
     }
 
@@ -273,8 +308,10 @@ class ChatApp {
     }
 
     if (chunk.type === 'text') {
-      const currentText = this.currentAssistantMessage.innerHTML || '';
-      this.currentAssistantMessage.innerHTML = currentText + this.formatContent(chunk.content);
+      // Accumulate content and show plain text during streaming
+      this.streamingContent += chunk.content;
+      // Use textContent for faster updates during streaming
+      this.currentAssistantMessage.textContent = this.streamingContent;
     } else if (chunk.type === 'error') {
       this.currentAssistantMessage.classList.add('error');
       this.currentAssistantMessage.textContent = chunk.content;
@@ -338,6 +375,206 @@ class ChatApp {
     // Clear the chat container and add welcome message
     this.chatContainer.innerHTML = '';
     this.addMessage('assistant', '对话已清除。有什么我可以帮你的吗？');
+    // Refresh session list
+    await this.loadSessionList();
+  }
+
+  /**
+   * Load and render session list
+   */
+  private async loadSessionList(): Promise<void> {
+    try {
+      const sessions = await window.electronAPI.sessionList();
+      this.renderSessionList(sessions);
+
+      // Set current session ID if we have sessions
+      if (sessions.length > 0 && !this.currentSessionId) {
+        this.currentSessionId = sessions[0].id;
+      }
+    } catch (error) {
+      console.error('Failed to load sessions:', error);
+    }
+  }
+
+  /**
+   * Render session list in sidebar
+   */
+  private renderSessionList(sessions: SessionMeta[]): void {
+    if (sessions.length === 0) {
+      this.sessionList.innerHTML = '<div class="no-sessions">暂无对话记录</div>';
+      return;
+    }
+
+    this.sessionList.innerHTML = sessions
+      .map((session) => {
+        const isActive = session.id === this.currentSessionId;
+        const timeStr = this.formatTime(session.updatedAt);
+        return `
+          <div class="session-item ${isActive ? 'active' : ''}" data-session-id="${session.id}">
+            <div class="session-title">${this.escapeHtml(session.title)}</div>
+            <div class="session-meta">
+              <span class="session-preview">${this.escapeHtml(session.preview)}</span>
+              <span class="session-time">${timeStr}</span>
+            </div>
+            <div class="session-actions">
+              <button class="session-action-btn rename-btn" data-session-id="${session.id}">重命名</button>
+              <button class="session-action-btn delete session-delete-btn" data-session-id="${session.id}">删除</button>
+            </div>
+          </div>
+        `;
+      })
+      .join('');
+
+    // Add event listeners
+    this.sessionList.querySelectorAll('.session-item').forEach((item) => {
+      item.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        // Ignore clicks on buttons
+        if (target.classList.contains('session-action-btn')) return;
+
+        const sessionId = (item as HTMLElement).dataset.sessionId;
+        if (sessionId) {
+          this.switchSession(sessionId);
+        }
+      });
+    });
+
+    this.sessionList.querySelectorAll('.session-delete-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const sessionId = (btn as HTMLElement).dataset.sessionId;
+        if (sessionId) {
+          this.deleteSession(sessionId);
+        }
+      });
+    });
+
+    this.sessionList.querySelectorAll('.rename-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const sessionId = (btn as HTMLElement).dataset.sessionId;
+        if (sessionId) {
+          this.renameSession(sessionId);
+        }
+      });
+    });
+  }
+
+  /**
+   * Format timestamp to readable time
+   */
+  private formatTime(timestamp: number): string {
+    const now = Date.now();
+    const diff = now - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (minutes < 1) return '刚刚';
+    if (minutes < 60) return `${minutes}分钟前`;
+    if (hours < 24) return `${hours}小时前`;
+    if (days < 7) return `${days}天前`;
+
+    const date = new Date(timestamp);
+    return `${date.getMonth() + 1}/${date.getDate()}`;
+  }
+
+  /**
+   * Escape HTML to prevent XSS
+   */
+  private escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  /**
+   * Create a new session
+   */
+  private async createNewSession(): Promise<void> {
+    try {
+      const session = await window.electronAPI.sessionCreate();
+      this.currentSessionId = session.id;
+      this.chatContainer.innerHTML = '';
+      this.addMessage('assistant', '新对话已创建。有什么我可以帮你的吗？');
+      await this.loadSessionList();
+    } catch (error) {
+      console.error('Failed to create session:', error);
+    }
+  }
+
+  /**
+   * Switch to a different session
+   */
+  private async switchSession(sessionId: string): Promise<void> {
+    if (sessionId === this.currentSessionId) return;
+
+    try {
+      const session = await window.electronAPI.sessionSwitch(sessionId);
+      if (session) {
+        this.currentSessionId = session.id;
+        this.renderMessages(session.messages);
+        await this.loadSessionList();
+      }
+    } catch (error) {
+      console.error('Failed to switch session:', error);
+    }
+  }
+
+  /**
+   * Render messages from a session
+   */
+  private renderMessages(messages: ChatMessage[]): void {
+    this.chatContainer.innerHTML = '';
+
+    if (messages.length === 0) {
+      this.addMessage('assistant', '有什么我可以帮你的吗？');
+      return;
+    }
+
+    messages.forEach((msg) => {
+      this.addMessage(msg.role, msg.content);
+    });
+  }
+
+  /**
+   * Delete a session
+   */
+  private async deleteSession(sessionId: string): Promise<void> {
+    if (!confirm('确定要删除这个对话吗？')) return;
+
+    try {
+      await window.electronAPI.sessionDelete(sessionId);
+
+      // If deleted current session, create new one
+      if (sessionId === this.currentSessionId) {
+        const sessions = await window.electronAPI.sessionList();
+        if (sessions.length > 0) {
+          await this.switchSession(sessions[0].id);
+        } else {
+          await this.createNewSession();
+        }
+      } else {
+        await this.loadSessionList();
+      }
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+    }
+  }
+
+  /**
+   * Rename a session
+   */
+  private async renameSession(sessionId: string): Promise<void> {
+    const newTitle = prompt('输入新的对话标题：');
+    if (!newTitle) return;
+
+    try {
+      await window.electronAPI.sessionRename(sessionId, newTitle);
+      await this.loadSessionList();
+    } catch (error) {
+      console.error('Failed to rename session:', error);
+    }
   }
 }
 

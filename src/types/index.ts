@@ -22,6 +22,29 @@ export interface ChatMessage {
 }
 
 /**
+ * Session structure for storing conversation sessions
+ */
+export interface Session {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * Session metadata for list display (without full messages)
+ */
+export interface SessionMeta {
+  id: string;
+  title: string;
+  messageCount: number;
+  createdAt: number;
+  updatedAt: number;
+  preview: string;
+}
+
+/**
  * Stream chunk types
  */
 export type ChunkType = 'text' | 'thinking' | 'error' | 'done';
@@ -68,6 +91,14 @@ export const IPC_CHANNELS = {
   CLEAR_HISTORY: 'clear-history',
   GET_HISTORY: 'get-history',
 
+  // Session management
+  SESSION_LIST: 'session-list',
+  SESSION_GET: 'session-get',
+  SESSION_CREATE: 'session-create',
+  SESSION_DELETE: 'session-delete',
+  SESSION_SWITCH: 'session-switch',
+  SESSION_RENAME: 'session-rename',
+
   // Main -> Renderer
   STREAM_CHUNK: 'stream-chunk',
 } as const;
@@ -87,6 +118,14 @@ export interface ElectronAPI {
   decryptData: (encryptedData: string) => Promise<string>;
   clearHistory: () => Promise<void>;
   getHistory: () => Promise<ChatMessage[]>;
+
+  // Session management
+  sessionList: () => Promise<SessionMeta[]>;
+  sessionGet: (id: string) => Promise<Session | null>;
+  sessionCreate: (title?: string) => Promise<Session>;
+  sessionDelete: (id: string) => Promise<boolean>;
+  sessionSwitch: (id: string) => Promise<Session | null>;
+  sessionRename: (id: string, title: string) => Promise<boolean>;
 }
 
 /**

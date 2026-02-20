@@ -12,6 +12,15 @@ files:
   - dist/**/*
   - public/**/*
   - package.json
+  - node_modules/better-sqlite3/**/*
+
+# Rebuild native modules for Electron
+npmRebuild: true
+buildDependenciesFromSource: true
+
+asar: true
+asarUnpack:
+  - node_modules/better-sqlite3/**/*
 
 # macOS Configuration
 mac:

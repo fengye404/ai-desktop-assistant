@@ -1,12 +1,14 @@
 import { app, BrowserWindow, ipcMain, safeStorage } from 'electron';
 import * as path from 'path';
 import { ClaudeService } from './claude-service';
+import { SessionStorage } from './session-storage';
 import { IPC_CHANNELS } from './types';
 import type { ModelConfig, StreamChunk } from './types';
 import { ServiceNotInitializedError, StreamAbortedError } from './utils/errors';
 
 let mainWindow: BrowserWindow | null = null;
 let claudeService: ClaudeService | null = null;
+let sessionStorage: SessionStorage | null = null;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -38,7 +40,19 @@ function createWindow(): void {
 
 // Initialize Claude service
 function initClaudeService(): void {
-  claudeService = new ClaudeService();
+  sessionStorage = new SessionStorage();
+  claudeService = new ClaudeService(sessionStorage);
+
+  // Create initial session if none exists
+  if (sessionStorage.listSessions().length === 0) {
+    sessionStorage.createSession();
+  } else {
+    // Switch to most recent session
+    const sessions = sessionStorage.listSessions();
+    if (sessions.length > 0) {
+      sessionStorage.switchSession(sessions[0].id);
+    }
+  }
 }
 
 // IPC Handlers
@@ -149,6 +163,49 @@ ipcMain.handle(IPC_CHANNELS.DECRYPT_DATA, async (_event, encryptedData: string):
     const message = error instanceof Error ? error.message : 'Decryption failed';
     throw new Error(`Failed to decrypt data: ${message}`);
   }
+});
+
+// Session management handlers
+ipcMain.handle(IPC_CHANNELS.SESSION_LIST, async () => {
+  if (!sessionStorage) {
+    throw new ServiceNotInitializedError('Session storage');
+  }
+  return sessionStorage.listSessions();
+});
+
+ipcMain.handle(IPC_CHANNELS.SESSION_GET, async (_event, id: string) => {
+  if (!sessionStorage) {
+    throw new ServiceNotInitializedError('Session storage');
+  }
+  return sessionStorage.getSession(id);
+});
+
+ipcMain.handle(IPC_CHANNELS.SESSION_CREATE, async (_event, title?: string) => {
+  if (!sessionStorage) {
+    throw new ServiceNotInitializedError('Session storage');
+  }
+  return sessionStorage.createSession(title);
+});
+
+ipcMain.handle(IPC_CHANNELS.SESSION_DELETE, async (_event, id: string) => {
+  if (!sessionStorage) {
+    throw new ServiceNotInitializedError('Session storage');
+  }
+  return sessionStorage.deleteSession(id);
+});
+
+ipcMain.handle(IPC_CHANNELS.SESSION_SWITCH, async (_event, id: string) => {
+  if (!sessionStorage) {
+    throw new ServiceNotInitializedError('Session storage');
+  }
+  return sessionStorage.switchSession(id);
+});
+
+ipcMain.handle(IPC_CHANNELS.SESSION_RENAME, async (_event, id: string, title: string) => {
+  if (!sessionStorage) {
+    throw new ServiceNotInitializedError('Session storage');
+  }
+  return sessionStorage.renameSession(id, title);
 });
 
 // App lifecycle

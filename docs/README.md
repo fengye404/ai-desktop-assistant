@@ -28,6 +28,7 @@ AI Desktop Assistant 定位为类似 **Anthropic Claude Desktop** 的桌面 AI �
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| v1.3.0 | 2026-02-20 | 添加历史会话记录，SQLite 持久化存储 |
 | v1.2.0 | 2026-02-20 | 添加对话记忆功能 |
 | v1.1.0 | - | 初始版本，支持双 API 格式 |
 
@@ -53,6 +54,7 @@ ai-desktop-assistant/
 │   ├── preload.ts           # 预加载脚本 (IPC 桥接)
 │   ├── renderer.ts          # 渲染进程 (前端逻辑)
 │   ├── claude-service.ts    # AI 服务层 (多提供商支持)
+│   ├── session-storage.ts   # 会话存储服务 (SQLite)
 │   ├── types/
 │   │   └── index.ts         # 集中类型定义
 │   └── utils/
@@ -77,5 +79,6 @@ ai-desktop-assistant/
 | 运行时 | Electron 28 |
 | 语言 | TypeScript 5.3 |
 | AI SDK | @anthropic-ai/sdk, openai |
+| 数据库 | SQLite (better-sqlite3) |
 | 构建工具 | tsc (TypeScript Compiler) |
 | 打包工具 | electron-builder |

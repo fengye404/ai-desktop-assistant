@@ -11,6 +11,12 @@ const IPC_CHANNELS = {
   DECRYPT_DATA: 'decrypt-data',
   CLEAR_HISTORY: 'clear-history',
   GET_HISTORY: 'get-history',
+  SESSION_LIST: 'session-list',
+  SESSION_GET: 'session-get',
+  SESSION_CREATE: 'session-create',
+  SESSION_DELETE: 'session-delete',
+  SESSION_SWITCH: 'session-switch',
+  SESSION_RENAME: 'session-rename',
   STREAM_CHUNK: 'stream-chunk',
 } as const;
 
@@ -60,6 +66,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getHistory: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_HISTORY),
+
+  // Session management
+  sessionList: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.SESSION_LIST),
+
+  sessionGet: (id: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SESSION_GET, id),
+
+  sessionCreate: (title?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SESSION_CREATE, title),
+
+  sessionDelete: (id: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SESSION_DELETE, id),
+
+  sessionSwitch: (id: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SESSION_SWITCH, id),
+
+  sessionRename: (id: string, title: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SESSION_RENAME, id, title),
 });
 
 // Type definitions for the exposed API
@@ -75,4 +100,30 @@ export type ElectronAPI = {
   decryptData: (encryptedData: string) => Promise<string>;
   clearHistory: () => Promise<void>;
   getHistory: () => Promise<{ role: string; content: string; timestamp?: number }[]>;
+  sessionList: () => Promise<
+    { id: string; title: string; messageCount: number; createdAt: number; updatedAt: number; preview: string }[]
+  >;
+  sessionGet: (id: string) => Promise<{
+    id: string;
+    title: string;
+    messages: { role: string; content: string; timestamp?: number }[];
+    createdAt: number;
+    updatedAt: number;
+  } | null>;
+  sessionCreate: (title?: string) => Promise<{
+    id: string;
+    title: string;
+    messages: { role: string; content: string; timestamp?: number }[];
+    createdAt: number;
+    updatedAt: number;
+  }>;
+  sessionDelete: (id: string) => Promise<boolean>;
+  sessionSwitch: (id: string) => Promise<{
+    id: string;
+    title: string;
+    messages: { role: string; content: string; timestamp?: number }[];
+    createdAt: number;
+    updatedAt: number;
+  } | null>;
+  sessionRename: (id: string, title: string) => Promise<boolean>;
 };
