@@ -65,6 +65,12 @@
       align-items: center;
       gap: 14px;
       -webkit-app-region: no-drag;
+      pointer-events: auto;
+    }
+
+    .header-right * {
+      -webkit-app-region: no-drag;
+      pointer-events: auto;
     }
 
     .header h1 {
@@ -133,8 +139,8 @@
       font-size: 13px;
       font-weight: 500;
       cursor: pointer;
-      -webkit-app-region: no-drag;
       transition: all 0.2s ease;
+      pointer-events: auto;
     }
 
     .settings-toggle:hover {
@@ -152,7 +158,13 @@
       backdrop-filter: blur(20px);
       border-bottom: 1px solid var(--glass-border);
       -webkit-app-region: no-drag;
+      pointer-events: auto;
       animation: slideDown 0.3s ease;
+    }
+
+    .settings-panel * {
+      -webkit-app-region: no-drag;
+      pointer-events: auto;
     }
 
     @keyframes slideDown {
