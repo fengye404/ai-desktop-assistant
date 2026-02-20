@@ -3,6 +3,7 @@ import { Send, Square, Trash2, Settings } from 'lucide-react';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
+import { MarkdownRenderer } from './MarkdownRenderer';
 import { useSessionStore } from '@/stores/session-store';
 import { useChatStore } from '@/stores/chat-store';
 import { useConfigStore } from '@/stores/config-store';
@@ -44,29 +45,6 @@ export function ChatArea() {
     }
   };
 
-  const formatContent = (content: string) => {
-    let formatted = content
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-
-    formatted = formatted.replace(
-      /```(\w*)\n([\s\S]*?)```/g,
-      (_, lang, code) => `<pre><code class="language-${lang || 'plaintext'}">${code.trim()}</code></pre>`
-    );
-
-    formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
-    formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    formatted = formatted.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-    formatted = formatted.replace(
-      /\[([^\]]+)\]\(([^)]+)\)/g,
-      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
-    );
-    formatted = formatted.replace(/\n/g, '<br>');
-
-    return formatted;
-  };
-
   return (
     <div className="flex-1 flex flex-col bg-background">
       {/* Header */}
@@ -103,19 +81,13 @@ export function ChatArea() {
                 msg.role === 'user' ? 'bg-primary/10 ml-12' : 'bg-card mr-12'
               )}
             >
-              <div
-                className="message-content prose prose-invert prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: formatContent(msg.content) }}
-              />
+              <MarkdownRenderer content={msg.content} />
             </div>
           ))}
 
           {streamingContent && (
             <div className="p-4 rounded-lg bg-card mr-12">
-              <div
-                className="message-content prose prose-invert prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: formatContent(streamingContent) }}
-              />
+              <MarkdownRenderer content={streamingContent} />
             </div>
           )}
 
