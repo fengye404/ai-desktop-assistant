@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import * as path from 'path';
 import Database from 'better-sqlite3';
-import type { Session, SessionMeta, ChatMessage } from './types';
+import type { Session, SessionMeta, ChatMessage, ModelConfig } from './types';
 
 /**
  * Generate a unique session ID
@@ -63,6 +63,14 @@ export class SessionStorage {
       )
     `);
 
+    // Create config table for storing model configuration
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS config (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    `);
+
     // Create index for faster queries
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)
@@ -71,6 +79,60 @@ export class SessionStorage {
     // Enable foreign keys
     this.db.pragma('foreign_keys = ON');
   }
+
+  // ==================== Config Methods ====================
+
+  /**
+   * Save model configuration
+   */
+  saveConfig(config: Partial<ModelConfig>): void {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)
+    `);
+
+    const transaction = this.db.transaction(() => {
+      if (config.provider !== undefined) {
+        stmt.run('provider', config.provider);
+      }
+      if (config.model !== undefined) {
+        stmt.run('model', config.model);
+      }
+      if (config.baseURL !== undefined) {
+        stmt.run('baseURL', config.baseURL);
+      }
+      if (config.apiKey !== undefined) {
+        // Store encrypted API key
+        stmt.run('apiKey', config.apiKey);
+      }
+    });
+
+    transaction();
+  }
+
+  /**
+   * Load model configuration
+   */
+  loadConfig(): Partial<ModelConfig> {
+    const stmt = this.db.prepare('SELECT key, value FROM config');
+    const rows = stmt.all() as Array<{ key: string; value: string }>;
+
+    const config: Partial<ModelConfig> = {};
+    for (const row of rows) {
+      if (row.key === 'provider') {
+        config.provider = row.value as 'anthropic' | 'openai';
+      } else if (row.key === 'model') {
+        config.model = row.value;
+      } else if (row.key === 'baseURL') {
+        config.baseURL = row.value;
+      } else if (row.key === 'apiKey') {
+        config.apiKey = row.value;
+      }
+    }
+
+    return config;
+  }
+
+  // ==================== Session Methods ====================
 
   /**
    * Get current session ID

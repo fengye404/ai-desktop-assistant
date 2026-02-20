@@ -41,9 +41,9 @@ interface Session {
   updatedAt: number;
 }
 
-// Storage keys
-const STORAGE_KEY = 'modelConfig';
-const ENCRYPTED_API_KEY = 'encryptedApiKey';
+// Storage keys (deprecated - now using SQLite)
+// const STORAGE_KEY = 'modelConfig';
+// const ENCRYPTED_API_KEY = 'encryptedApiKey';
 
 class ChatApp {
   private chatContainer: HTMLElement;
@@ -154,36 +154,35 @@ class ChatApp {
   }
 
   /**
-   * Load config from secure storage
+   * Load config from SQLite storage
    */
   private async loadConfig(): Promise<void> {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const config = JSON.parse(saved) as Partial<ModelConfig>;
+      // Load config from SQLite via IPC
+      const config = (await window.electronAPI.configLoad()) as Partial<ModelConfig>;
 
+      if (config && Object.keys(config).length > 0) {
         this.providerSelect.value = config.provider || 'anthropic';
         this.modelInput.value = config.model || '';
         this.baseURLInput.value = config.baseURL || '';
 
-        // Load encrypted API key
-        const encryptedKey = localStorage.getItem(ENCRYPTED_API_KEY);
-        if (encryptedKey) {
+        // Load and decrypt API key
+        if (config.apiKey) {
           try {
-            const decryptedKey = await window.electronAPI.decryptData(encryptedKey);
+            const decryptedKey = await window.electronAPI.decryptData(config.apiKey);
             this.apiKeyInput.value = decryptedKey;
           } catch {
-            console.warn('Failed to decrypt API key, clearing stored data');
-            localStorage.removeItem(ENCRYPTED_API_KEY);
+            console.warn('Failed to decrypt API key');
           }
         }
 
-        // Apply to backend (without API key initially)
+        // Apply to backend
         if (config.provider && config.model) {
           await window.electronAPI.setModelConfig({
             provider: config.provider,
             model: config.model,
             baseURL: config.baseURL,
+            apiKey: this.apiKeyInput.value,
           });
         }
         this.updateConnectionStatus(true, '已配置');
@@ -194,31 +193,33 @@ class ChatApp {
   }
 
   /**
-   * Save config to secure storage
+   * Save config to SQLite storage
    */
   private async saveConfig(): Promise<void> {
     try {
+      const apiKey = this.apiKeyInput.value;
+
+      // Encrypt API key before saving
+      let encryptedKey = '';
+      if (apiKey) {
+        encryptedKey = await window.electronAPI.encryptData(apiKey);
+      }
+
       const config: Partial<ModelConfig> = {
         provider: this.providerSelect.value as ModelConfig['provider'],
         model: this.modelInput.value,
         baseURL: this.baseURLInput.value || undefined,
+        apiKey: encryptedKey,
       };
 
-      // Save non-sensitive config to localStorage
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-
-      // Encrypt and save API key
-      const apiKey = this.apiKeyInput.value;
-      if (apiKey) {
-        const encryptedKey = await window.electronAPI.encryptData(apiKey);
-        localStorage.setItem(ENCRYPTED_API_KEY, encryptedKey);
-      } else {
-        localStorage.removeItem(ENCRYPTED_API_KEY);
-      }
+      // Save config to SQLite via IPC
+      await window.electronAPI.configSave(config);
 
       // Apply to backend with API key
       await window.electronAPI.setModelConfig({
-        ...config,
+        provider: config.provider,
+        model: config.model,
+        baseURL: config.baseURL,
         apiKey: apiKey,
       });
 

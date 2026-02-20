@@ -208,6 +208,22 @@ ipcMain.handle(IPC_CHANNELS.SESSION_RENAME, async (_event, id: string, title: st
   return sessionStorage.renameSession(id, title);
 });
 
+// Config management handlers
+ipcMain.handle(IPC_CHANNELS.CONFIG_SAVE, async (_event, config: Partial<ModelConfig>) => {
+  if (!sessionStorage) {
+    throw new ServiceNotInitializedError('Session storage');
+  }
+  sessionStorage.saveConfig(config);
+  return true;
+});
+
+ipcMain.handle(IPC_CHANNELS.CONFIG_LOAD, async () => {
+  if (!sessionStorage) {
+    throw new ServiceNotInitializedError('Session storage');
+  }
+  return sessionStorage.loadConfig();
+});
+
 // App lifecycle
 app.whenReady().then(() => {
   initClaudeService();

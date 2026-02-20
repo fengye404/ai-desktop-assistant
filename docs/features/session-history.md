@@ -1,10 +1,10 @@
 # 历史会话记录
 
-> v1.3.0 新增功能
+> v1.3.0 新增功能，v1.3.1 新增配置持久化
 
 ## 功能概述
 
-历史会话记录功能提供侧边栏会话管理界面，支持多会话切换、会话持久化存储。用户可以随时切换回之前的对话，所有对话记录都会保存在本地 SQLite 数据库中。
+历史会话记录功能提供侧边栏会话管理界面，支持多会话切换、会话持久化存储。用户可以随时切换回之前的对话，所有对话记录和配置都会保存在本地 SQLite 数据库中。
 
 ## 界面设计
 
@@ -66,6 +66,12 @@ CREATE TABLE messages (
   FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
+-- 配置表 (v1.3.1 新增)
+CREATE TABLE config (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 -- 索引
 CREATE INDEX idx_messages_session_id ON messages(session_id);
 ```
@@ -77,26 +83,21 @@ export class SessionStorage {
   private db: Database.Database;
   private currentSessionId: string | null = null;
 
-  // 会话列表
+  // 会话管理
   listSessions(): SessionMeta[]
-  
-  // 获取会话
   getSession(id: string): Session | null
-  
-  // 创建会话
   createSession(title?: string): Session
-  
-  // 切换会话
   switchSession(id: string): Session | null
-  
-  // 删除会话
   deleteSession(id: string): boolean
-  
-  // 重命名会话
   renameSession(id: string, title: string): boolean
   
-  // 更新消息
+  // 消息管理
+  getMessages(): ChatMessage[]
   updateMessages(messages: ChatMessage[]): void
+  
+  // 配置管理 (v1.3.1 新增)
+  saveConfig(config: Partial<ModelConfig>): void
+  loadConfig(): Partial<ModelConfig>
 }
 ```
 
@@ -121,12 +122,16 @@ export interface SessionMeta {
 }
 
 export const IPC_CHANNELS = {
+  // 会话管理
   SESSION_LIST: 'session-list',
   SESSION_GET: 'session-get',
   SESSION_CREATE: 'session-create',
   SESSION_DELETE: 'session-delete',
   SESSION_SWITCH: 'session-switch',
   SESSION_RENAME: 'session-rename',
+  // 配置管理 (v1.3.1 新增)
+  CONFIG_SAVE: 'config-save',
+  CONFIG_LOAD: 'config-load',
 };
 ```
 

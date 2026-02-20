@@ -17,6 +17,8 @@ const IPC_CHANNELS = {
   SESSION_DELETE: 'session-delete',
   SESSION_SWITCH: 'session-switch',
   SESSION_RENAME: 'session-rename',
+  CONFIG_SAVE: 'config-save',
+  CONFIG_LOAD: 'config-load',
   STREAM_CHUNK: 'stream-chunk',
 } as const;
 
@@ -85,6 +87,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   sessionRename: (id: string, title: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.SESSION_RENAME, id, title),
+
+  // Config management
+  configSave: (config: Record<string, unknown>) =>
+    ipcRenderer.invoke(IPC_CHANNELS.CONFIG_SAVE, config),
+
+  configLoad: () => ipcRenderer.invoke(IPC_CHANNELS.CONFIG_LOAD),
 });
 
 // Type definitions for the exposed API

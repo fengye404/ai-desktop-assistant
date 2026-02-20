@@ -99,6 +99,10 @@ export const IPC_CHANNELS = {
   SESSION_SWITCH: 'session-switch',
   SESSION_RENAME: 'session-rename',
 
+  // Config management
+  CONFIG_SAVE: 'config-save',
+  CONFIG_LOAD: 'config-load',
+
   // Main -> Renderer
   STREAM_CHUNK: 'stream-chunk',
 } as const;
@@ -126,6 +130,10 @@ export interface ElectronAPI {
   sessionDelete: (id: string) => Promise<boolean>;
   sessionSwitch: (id: string) => Promise<Session | null>;
   sessionRename: (id: string, title: string) => Promise<boolean>;
+
+  // Config management
+  configSave: (config: Partial<ModelConfig>) => Promise<boolean>;
+  configLoad: () => Promise<Partial<ModelConfig>>;
 }
 
 /**

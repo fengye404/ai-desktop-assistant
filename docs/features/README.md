@@ -47,18 +47,22 @@
   - 智谱 AI
   - 等等...
 
-### 4. 流式响应
+### 4. 流式响应 (v1.3.1 优化)
 
 - 使用 AsyncGenerator 实现
 - 实时显示生成内容
 - 支持随时取消响应
+- v1.3.1 优化：流式过程使用 textContent 快速更新，完成后再格式化
 
-### 5. 安全存储
+详见：[流式响应](./streaming.md)
+
+### 5. 安全存储 (v1.3.1 改进)
 
 - API Key 使用系统级加密存储
-- macOS: Keychain
-- Windows: DPAPI
-- Linux: Secret Service
+- v1.3.1：配置持久化到 SQLite，重启不丢失
+- macOS: safeStorage (Keychain)
+- Windows: safeStorage (DPAPI)
+- Linux: safeStorage (Secret Service)
 
 ### 6. 现代 UI
 
