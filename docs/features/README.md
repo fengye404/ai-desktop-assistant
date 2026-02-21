@@ -6,20 +6,27 @@
 
 | 功能 | 文档 | 说明 |
 |------|------|------|
-| 工具系统 | [tool-system.md](./tool-system.md) | Agentic Loop、内置工具、权限控制 |
+| 工具系统 | [tool-system.md](./tool-system.md) | Agentic Loop、内置工具、权限控制、UI 展示、持久化 |
 | 对话记忆 | [conversation-memory.md](./conversation-memory.md) | 多轮对话上下文记忆 |
 | 历史会话 | [session-history.md](./session-history.md) | 侧边栏会话管理 |
 | 流式响应 | [streaming.md](./streaming.md) | 实时显示 AI 生成内容 |
 
 ## 核心功能概览
 
-### 1. 工具系统 (v1.4.0 新增)
+### 1. 工具系统 (v1.4.0 新增, v1.5.0 增强)
 
 参考 Claude Agent SDK 设计的 Agentic Loop 架构：
 
 - **9 个内置工具**：读写文件、编辑、搜索、命令执行、网页获取等
-- **三级权限控制**：allow（自动）、ask（弹窗确认）、deny（禁止）
+- **三级权限控制**：allow（自动）、ask（内联卡片确认）、deny（禁止）
 - **循环调用**：AI 可连续调用多个工具完成复杂任务（最多 10 次）
+
+**v1.5.0 新增：**
+- **可折叠 UI 展示**：工具调用以卡片形式穿插显示，支持展开查看详情
+- **权限设置界面**：在设置中自定义工具权限
+- **会话级快捷确认**：本次会话允许该工具/允许所有
+- **持久化存储**：工具调用记录 gzip 压缩存储到 SQLite
+- **超时优化**：确认超时从 30 秒延长到 5 分钟
 
 详见：[工具系统](./tool-system.md)
 
@@ -80,3 +87,4 @@
 - 响应式布局
 - Markdown 渲染支持
 - 侧边栏会话管理
+- 工具调用可折叠卡片展示

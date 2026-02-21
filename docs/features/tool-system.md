@@ -1,6 +1,7 @@
 # 工具系统
 
 > v1.4.0 新增 - 参考 [Claude Agent SDK](https://platform.claude.com/docs/zh-CN/agent-sdk/overview) 设计
+> v1.5.0 增强 - 工具调用 UI 展示、权限管理、持久化存储
 
 工具系统是 AI Desktop Assistant 的核心能力，让 AI 能够执行文件操作、搜索、命令执行等实际任务。
 
@@ -23,8 +24,8 @@
 │               ┌──────────────┴──────────────┐               │
 │               ↓                             ↓               │
 │        ┌────────────┐               ┌────────────┐          │
-│        │ allow: 直接 │               │ ask: 弹窗  │          │
-│        │ 执行工具    │               │ 请求用户批准│          │
+│        │ allow: 直接 │               │ ask: 内联  │          │
+│        │ 执行工具    │               │ 卡片确认   │          │
 │        └────────────┘               └────────────┘          │
 │               │                             │               │
 │               └──────────────┬──────────────┘               │
@@ -47,37 +48,169 @@
 
 ## 内置工具
 
-| 工具 | 功能 | 权限 |
+| 工具 | 功能 | 默认权限 |
+|------|------|----------|
+| `read_file` | 读取文件内容，支持指定行范围 | ✅ 允许 |
+| `write_file` | 创建或覆盖文件 | ⚠️ 需确认 |
+| `edit_file` | 精确字符串替换编辑 | ⚠️ 需确认 |
+| `list_directory` | 列出目录内容 | ✅ 允许 |
+| `search_files` | Glob 模式搜索文件路径 | ✅ 允许 |
+| `grep_search` | 正则表达式搜索文件内容 | ✅ 允许 |
+| `run_command` | 执行 Shell 命令 | ⚠️ 需确认 |
+| `web_fetch` | 获取网页内容 | ✅ 允许 |
+| `get_system_info` | 获取系统信息 | ✅ 允许 |
+
+## 工具调用 UI (v1.5.0)
+
+### 可折叠卡片展示
+
+工具调用以可折叠卡片形式穿插显示在对话流中：
+
+```
+┌─────────────────────────────────────────────────┐
+│  ▶ 📁 列出目录  /Users/xxx/project         ✅   │
+├─────────────────────────────────────────────────┤
+│ 输入参数                                        │
+│ ┌───────────────────────────────────────────┐  │
+│ │ { "path": "/Users/xxx/project" }          │  │
+│ └───────────────────────────────────────────┘  │
+│ 输出结果                                        │
+│ ┌───────────────────────────────────────────┐  │
+│ │ src/                                      │  │
+│ │ package.json                              │  │
+│ │ ...                                       │  │
+│ └───────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────┘
+```
+
+### 状态指示
+
+| 状态 | 图标 | 说明 |
 |------|------|------|
-| `read_file` | 读取文件内容，支持指定行范围 | allow |
-| `write_file` | 创建或覆盖文件 | ask |
-| `edit_file` | 精确字符串替换编辑 | ask |
-| `list_directory` | 列出目录内容 | allow |
-| `search_files` | Glob 模式搜索文件路径 | allow |
-| `grep_search` | 正则表达式搜索文件内容 | allow |
-| `run_command` | 执行 Shell 命令 | ask |
-| `web_fetch` | 获取网页内容 | allow |
-| `get_system_info` | 获取系统信息 | allow |
+| pending | ⚠️ 黄色 | 等待用户确认 |
+| running | 🔄 蓝色 | 正在执行中 |
+| success | ✅ 绿色 | 执行成功 |
+| error | ❌ 红色 | 执行失败 |
 
-## 权限系统
+### Agentic Loop 穿插渲染
 
-三级权限控制：
+AI 输出按真实顺序展示，文字和工具调用交替穿插：
+
+```
+AI: 让我帮你分析这个项目结构。
+   [📁 列出目录 /project ✅]
+AI: 项目包含以下主要文件：
+   [📄 读取文件 package.json ✅]
+AI: 这是一个 Node.js 项目，让我检查源码...
+```
+
+## 权限系统 (v1.5.0 增强)
+
+### 三级权限
 
 | 权限 | 说明 | 用户交互 |
 |------|------|----------|
 | `allow` | 自动允许 | 无 |
-| `ask` | 需要确认 | 弹窗审批 |
-| `deny` | 禁止使用 | 拒绝执行 |
+| `ask` | 需要确认 | 内联卡片确认 |
+| `deny` | 禁止使用 | 直接拒绝 |
 
-敏感操作（写文件、执行命令）默认需要用户确认，通过 `ToolApprovalDialog` 组件展示。
+### 设置界面配置
+
+在设置中可以自定义工具权限，勾选的工具会自动执行：
+
+```
+┌─────────────────────────────────────────┐
+│ 工具权限                                │
+│                                         │
+│ ☑ 读取文件     ☐ 写入文件     ☐ 编辑文件 │
+│ ☑ 列出目录     ☑ 搜索文件     ☑ 内容搜索 │
+│ ☐ 执行命令     ☑ 获取网页     ☑ 系统信息 │
+└─────────────────────────────────────────┘
+```
+
+### 会话级快捷确认 (v1.5.0)
+
+为解决多次工具调用需要多次确认的问题，提供三种确认方式：
+
+| 按钮 | 功能 |
+|------|------|
+| **允许** | 仅允许本次工具调用 |
+| **本次会话允许该工具** | 本次会话中该类型工具自动执行 |
+| **本次会话允许所有** | 本次会话中所有工具自动执行 |
+
+```
+┌─────────────────────────────────────────────────┐
+│  ▶ ⚠️ 需要确认 执行命令  npm run build          │
+├─────────────────────────────────────────────────┤
+│ 输入参数                                        │
+│ { "command": "npm run build" }                 │
+├─────────────────────────────────────────────────┤
+│ 🛡 本次会话允许该工具  🛡️ 本次会话允许所有      │
+│                         [ 取消 ] [ 允许 ]       │
+└─────────────────────────────────────────────────┘
+```
+
+### 超时设置
+
+- 默认超时：**5 分钟**（300 秒）
+- 超时后自动拒绝执行
+- 给用户充足时间决定是否允许
+
+## 工具调用持久化 (v1.5.0)
+
+### 数据结构
+
+消息支持 `items` 字段存储工具调用记录：
+
+```typescript
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;           // 纯文本内容（向后兼容）
+  items?: MessageItem[];     // 穿插的文字和工具调用
+  timestamp?: number;
+}
+
+type MessageItem = 
+  | { type: 'text'; content: string }
+  | { type: 'tool'; toolCall: ToolCallRecord };
+
+interface ToolCallRecord {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+  status: 'pending' | 'running' | 'success' | 'error';
+  output?: string;
+  error?: string;
+}
+```
+
+### SQLite 存储
+
+- `items` 数据使用 **gzip 压缩** 存储到 `messages.items_data` BLOB 列
+- 压缩可显著减少存储空间（JSON 文本压缩率约 70-80%）
+- 切换会话时自动解压并恢复完整的工具调用 UI
+
+```sql
+CREATE TABLE messages (
+  id INTEGER PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  items_data BLOB,        -- gzip 压缩的 items JSON
+  timestamp INTEGER NOT NULL
+);
+```
 
 ## 核心代码
 
 | 文件 | 职责 |
 |------|------|
 | `src/tool-executor.ts` | 工具定义和执行实现 |
-| `src/claude-service.ts` | Agentic Loop 主逻辑 |
-| `src/renderer/components/ToolApprovalDialog.tsx` | 权限审批弹窗 |
+| `src/claude-service.ts` | Agentic Loop 主逻辑、items 收集 |
+| `src/session-storage.ts` | 消息存储、gzip 压缩/解压 |
+| `src/renderer/components/ToolCallBlock.tsx` | 工具调用卡片组件 |
+| `src/renderer/stores/chat-store.ts` | 流式内容管理、权限确认 |
+| `src/renderer/stores/config-store.ts` | 工具权限配置 |
 
 ## 工具定义格式
 
@@ -145,6 +278,9 @@ messages.push({ role: 'user', content: toolResults });
 ```typescript
 // claude-service.ts
 const MAX_TOOL_ITERATIONS = 10;  // 最大工具调用循环次数
+
+// main.ts
+const TOOL_APPROVAL_TIMEOUT = 300000;  // 5 分钟超时
 ```
 
 ## 相关文档

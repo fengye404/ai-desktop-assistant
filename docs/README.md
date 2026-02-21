@@ -28,6 +28,7 @@ AI Desktop Assistant 定位为类似 **Anthropic Claude Cowork** 的桌面 AI �
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| v1.5.0 | 2026-02-21 | 工具调用 UI 展示、权限设置、会话级确认、gzip 持久化 |
 | v1.4.0 | 2026-02-21 | 工具系统：实现 Agentic Loop、9 个内置工具、权限控制 |
 | v1.3.2 | 2026-02-20 | 前端重构为 Vite + React + Tailwind + shadcn/ui + Zustand |
 | v1.3.1 | 2026-02-20 | 修复流式输出、配置持久化到 SQLite |
@@ -70,7 +71,8 @@ ai-desktop-assistant/
 │       │   ├── Sidebar.tsx
 │       │   ├── ChatArea.tsx
 │       │   ├── SettingsDialog.tsx
-│       │   └── ToolApprovalDialog.tsx
+│       │   ├── ToolCallBlock.tsx
+│       │   └── MarkdownRenderer.tsx
 │       ├── stores/          # Zustand 状态管理
 │       │   ├── config-store.ts
 │       │   ├── session-store.ts
