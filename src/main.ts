@@ -1,307 +1,35 @@
-import { app, BrowserWindow, ipcMain, safeStorage } from 'electron';
-import * as path from 'path';
-import { ClaudeService } from './claude-service';
-import { SessionStorage } from './session-storage';
-import { IPC_CHANNELS } from './types';
-import type { ModelConfig, StreamChunk } from './types';
-import { ServiceNotInitializedError, StreamAbortedError } from './utils/errors';
+import { app, BrowserWindow } from 'electron';
+import { registerIpcHandlers } from './main-process/ipc/register-ipc-handlers';
+import { MainProcessContext } from './main-process/main-process-context';
+import { createMainWindow } from './main-process/window-factory';
 
-// 只有显式设置 VITE_DEV_SERVER=true 才使用开发服务器
+// Use Vite dev server only when explicitly enabled.
 const useViteDevServer = process.env.VITE_DEV_SERVER === 'true';
 
-let mainWindow: BrowserWindow | null = null;
-let claudeService: ClaudeService | null = null;
-let sessionStorage: SessionStorage | null = null;
+const context = new MainProcessContext();
+registerIpcHandlers(context);
 
-// Tool approval handling
-let pendingToolApproval: {
-  resolve: (approved: boolean) => void;
-  reject: (error: Error) => void;
-} | null = null;
+function openMainWindow(): void {
+  const window = createMainWindow({ useViteDevServer });
+  context.setMainWindow(window);
 
-function createWindow(): void {
-  mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 800,
-    minHeight: 600,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'),
-    },
-    titleBarStyle: 'hiddenInset',
-    vibrancy: 'under-window',
-    visualEffectState: 'active',
-    show: false,
+  window.once('ready-to-show', () => {
+    window.show();
   });
 
-  // Load renderer
-  if (useViteDevServer) {
-    mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools();
-  } else {
-    mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'));
-    // 按 Cmd+Option+I 打开开发者工具
-  }
-
-  // 快捷键打开开发者工具
-  mainWindow.webContents.on('before-input-event', (_event, input) => {
-    if (input.meta && input.alt && input.key === 'i') {
-      mainWindow?.webContents.toggleDevTools();
-    }
-  });
-
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
-  });
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
+  window.on('closed', () => {
+    context.setMainWindow(null);
+    context.toolApproval.dispose();
   });
 }
 
-// Initialize Claude service
-function initClaudeService(): void {
-  sessionStorage = new SessionStorage();
-  claudeService = new ClaudeService(sessionStorage);
-
-  // Set up tool permission callback
-  claudeService.setToolPermissionCallback(async (toolName: string, input: Record<string, unknown>) => {
-    return new Promise((resolve, reject) => {
-      if (!mainWindow || mainWindow.isDestroyed()) {
-        resolve(false);
-        return;
-      }
-
-      // Store the promise handlers
-      pendingToolApproval = { resolve, reject };
-
-      // Format input for display
-      const description = Object.entries(input)
-        .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
-        .join('\n');
-
-      // Send approval request to renderer
-      mainWindow.webContents.send(IPC_CHANNELS.TOOL_APPROVAL_REQUEST, {
-        tool: toolName,
-        input,
-        description,
-      });
-
-      // Timeout after 5 minutes (give user more time to decide)
-      setTimeout(() => {
-        if (pendingToolApproval) {
-          pendingToolApproval.resolve(false);
-          pendingToolApproval = null;
-        }
-      }, 300000);
-    });
-  });
-
-  // Create initial session if none exists
-  if (sessionStorage.listSessions().length === 0) {
-    sessionStorage.createSession();
-  } else {
-    // Switch to most recent session
-    const sessions = sessionStorage.listSessions();
-    if (sessions.length > 0) {
-      sessionStorage.switchSession(sessions[0].id);
-    }
-  }
-}
-
-// Handle tool approval response from renderer
-ipcMain.on(IPC_CHANNELS.TOOL_APPROVAL_RESPONSE, (_event, approved: boolean) => {
-  if (pendingToolApproval) {
-    pendingToolApproval.resolve(approved);
-    pendingToolApproval = null;
-  }
-});
-
-// IPC Handlers
-ipcMain.handle(IPC_CHANNELS.SEND_MESSAGE, async (_event, message: string, systemPrompt?: string) => {
-  if (!claudeService) {
-    throw new ServiceNotInitializedError('Claude service');
-  }
-  return await claudeService.sendMessage(message, systemPrompt);
-});
-
-ipcMain.handle(IPC_CHANNELS.SEND_MESSAGE_STREAM, async (_event, message: string, systemPrompt?: string) => {
-  if (!claudeService) {
-    throw new ServiceNotInitializedError('Claude service');
-  }
-
-  try {
-    const stream = claudeService.sendMessageStream(message, systemPrompt);
-
-    for await (const chunk of stream) {
-      // Check if window is still valid
-      if (mainWindow?.isDestroyed()) {
-        break;
-      }
-      mainWindow?.webContents.send(IPC_CHANNELS.STREAM_CHUNK, chunk);
-    }
-
-    // Send done signal
-    mainWindow?.webContents.send(IPC_CHANNELS.STREAM_CHUNK, { type: 'done', content: '' } as StreamChunk);
-
-    return true;
-  } catch (error) {
-    console.error('[main] Stream error:', error);
-    if (error instanceof StreamAbortedError) {
-      mainWindow?.webContents.send(IPC_CHANNELS.STREAM_CHUNK, {
-        type: 'error',
-        content: 'Response was cancelled',
-      } as StreamChunk);
-      return false;
-    }
-    // 发送错误到渲染进程
-    mainWindow?.webContents.send(IPC_CHANNELS.STREAM_CHUNK, {
-      type: 'error',
-      content: error instanceof Error ? error.message : 'Unknown error',
-    } as StreamChunk);
-    throw error;
-  }
-});
-
-ipcMain.handle(IPC_CHANNELS.ABORT_STREAM, async () => {
-  if (claudeService) {
-    claudeService.abort();
-  }
-});
-
-ipcMain.handle(IPC_CHANNELS.SET_MODEL_CONFIG, async (_event, config: Partial<ModelConfig>) => {
-  if (!claudeService) {
-    throw new ServiceNotInitializedError('Claude service');
-  }
-  claudeService.setConfig(config);
-  return true;
-});
-
-ipcMain.handle(IPC_CHANNELS.TEST_CONNECTION, async () => {
-  if (!claudeService) {
-    throw new ServiceNotInitializedError('Claude service');
-  }
-  return await claudeService.testConnection();
-});
-
-ipcMain.handle(IPC_CHANNELS.CLEAR_HISTORY, async () => {
-  if (!claudeService) {
-    throw new ServiceNotInitializedError('Claude service');
-  }
-  claudeService.clearHistory();
-});
-
-ipcMain.handle(IPC_CHANNELS.GET_HISTORY, async () => {
-  if (!claudeService) {
-    throw new ServiceNotInitializedError('Claude service');
-  }
-  return claudeService.getHistory();
-});
-
-// Encryption handlers for secure storage
-ipcMain.handle(IPC_CHANNELS.ENCRYPT_DATA, async (_event, data: string): Promise<string> => {
-  try {
-    if (!safeStorage.isEncryptionAvailable()) {
-      console.warn('Encryption not available, storing data in plain text');
-      return `plain:${data}`;
-    }
-    const encryptedBuffer = safeStorage.encryptString(data);
-    return encryptedBuffer.toString('base64');
-  } catch (error) {
-    console.error('Encryption error:', error);
-    // Fallback to plain text
-    return `plain:${data}`;
-  }
-});
-
-ipcMain.handle(IPC_CHANNELS.DECRYPT_DATA, async (_event, encryptedData: string): Promise<string> => {
-  // Handle plain text fallback
-  if (encryptedData.startsWith('plain:')) {
-    return encryptedData.slice(6);
-  }
-
-  if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error('Decryption not available on this system');
-  }
-
-  try {
-    const encryptedBuffer = Buffer.from(encryptedData, 'base64');
-    return safeStorage.decryptString(encryptedBuffer);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Decryption failed';
-    throw new Error(`Failed to decrypt data: ${message}`);
-  }
-});
-
-// Session management handlers
-ipcMain.handle(IPC_CHANNELS.SESSION_LIST, async () => {
-  if (!sessionStorage) {
-    throw new ServiceNotInitializedError('Session storage');
-  }
-  return sessionStorage.listSessions();
-});
-
-ipcMain.handle(IPC_CHANNELS.SESSION_GET, async (_event, id: string) => {
-  if (!sessionStorage) {
-    throw new ServiceNotInitializedError('Session storage');
-  }
-  return sessionStorage.getSession(id);
-});
-
-ipcMain.handle(IPC_CHANNELS.SESSION_CREATE, async (_event, title?: string) => {
-  if (!sessionStorage) {
-    throw new ServiceNotInitializedError('Session storage');
-  }
-  return sessionStorage.createSession(title);
-});
-
-ipcMain.handle(IPC_CHANNELS.SESSION_DELETE, async (_event, id: string) => {
-  if (!sessionStorage) {
-    throw new ServiceNotInitializedError('Session storage');
-  }
-  return sessionStorage.deleteSession(id);
-});
-
-ipcMain.handle(IPC_CHANNELS.SESSION_SWITCH, async (_event, id: string) => {
-  if (!sessionStorage) {
-    throw new ServiceNotInitializedError('Session storage');
-  }
-  return sessionStorage.switchSession(id);
-});
-
-ipcMain.handle(IPC_CHANNELS.SESSION_RENAME, async (_event, id: string, title: string) => {
-  if (!sessionStorage) {
-    throw new ServiceNotInitializedError('Session storage');
-  }
-  return sessionStorage.renameSession(id, title);
-});
-
-// Config management handlers
-ipcMain.handle(IPC_CHANNELS.CONFIG_SAVE, async (_event, config: Partial<ModelConfig>) => {
-  if (!sessionStorage) {
-    throw new ServiceNotInitializedError('Session storage');
-  }
-  sessionStorage.saveConfig(config);
-  return true;
-});
-
-ipcMain.handle(IPC_CHANNELS.CONFIG_LOAD, async () => {
-  if (!sessionStorage) {
-    throw new ServiceNotInitializedError('Session storage');
-  }
-  return sessionStorage.loadConfig();
-});
-
-// App lifecycle
 app.whenReady().then(() => {
-  initClaudeService();
-  createWindow();
+  context.initializeServices();
+  openMainWindow();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      openMainWindow();
     }
   });
 });
@@ -313,5 +41,5 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  claudeService?.cleanup();
+  context.cleanup();
 });

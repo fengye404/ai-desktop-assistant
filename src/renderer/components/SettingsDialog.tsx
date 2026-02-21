@@ -8,7 +8,8 @@ import {
 } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { useConfigStore, Provider, ALL_TOOLS } from '@/stores/config-store';
+import type { Provider } from '../../types';
+import { useConfigStore, ALL_TOOLS } from '@/stores/config-store';
 import { cn } from '@/lib/utils';
 
 export function SettingsDialog() {
@@ -32,15 +33,15 @@ export function SettingsDialog() {
 
   return (
     <Dialog open={isSettingsOpen} onOpenChange={setSettingsOpen}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="sm:max-w-[520px] border-border/70 bg-[linear-gradient(165deg,hsl(var(--card)/0.98),hsl(223_18%_8%/0.96))]">
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl border border-border/60 bg-[linear-gradient(145deg,hsl(var(--primary)/0.25),hsl(var(--cool-accent)/0.2))] flex items-center justify-center">
               <Settings2 className="h-5 w-5 text-primary" />
             </div>
             <div>
               <DialogTitle>设置</DialogTitle>
-              <p className="text-sm text-muted-foreground mt-1">配置 AI 服务连接</p>
+              <p className="text-sm text-muted-foreground mt-1">配置模型、连接和工具权限</p>
             </div>
           </div>
         </DialogHeader>
@@ -52,7 +53,7 @@ export function SettingsDialog() {
             <select
               value={provider}
               onChange={(e) => setProvider(e.target.value as Provider)}
-              className="w-full h-10 rounded-lg border border-border/50 bg-secondary/50 px-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
+              className="w-full h-10 rounded-lg border border-border/60 bg-secondary/45 px-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
             >
               <option value="anthropic">Anthropic (Claude)</option>
               <option value="openai">OpenAI / 兼容 API</option>
@@ -100,10 +101,10 @@ export function SettingsDialog() {
 
           {/* Connection Status */}
           <div className={cn(
-            "flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm border",
-            connectionStatus.connected 
-              ? "bg-green-500/10 border-green-500/20" 
-              : "bg-yellow-500/10 border-yellow-500/20"
+            'flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm border',
+            connectionStatus.connected
+              ? 'bg-green-500/10 border-green-500/20'
+              : 'bg-yellow-500/10 border-yellow-500/20'
           )}>
             {connectionStatus.connected ? (
               <Check className="h-4 w-4 text-green-500" />
@@ -111,8 +112,8 @@ export function SettingsDialog() {
               <AlertCircle className="h-4 w-4 text-yellow-500" />
             )}
             <span className={cn(
-              "font-medium",
-              connectionStatus.connected ? "text-green-500" : "text-yellow-500"
+              'font-medium',
+              connectionStatus.connected ? 'text-green-500' : 'text-yellow-500'
             )}>
               {connectionStatus.message}
             </span>
@@ -132,10 +133,10 @@ export function SettingsDialog() {
                 <label
                   key={tool.name}
                   className={cn(
-                    "flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-all",
+                    'flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-all',
                     allowedTools.includes(tool.name)
-                      ? "bg-primary/10 border-primary/30"
-                      : "bg-secondary/30 border-border/50 hover:bg-secondary/50"
+                      ? 'bg-primary/10 border-primary/30 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.05)]'
+                      : 'bg-secondary/30 border-border/50 hover:bg-secondary/50'
                   )}
                 >
                   <input
@@ -155,12 +156,12 @@ export function SettingsDialog() {
           <Button 
             variant="outline" 
             onClick={testConnection}
-            className="gap-2"
+            className="gap-2 border-border/60 bg-secondary/45 hover:bg-secondary/75"
           >
             <Zap className="h-4 w-4" />
             测试连接
           </Button>
-          <Button onClick={saveConfig}>
+          <Button onClick={saveConfig} className="bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(var(--cool-accent)))] text-black/85 hover:opacity-90">
             保存设置
           </Button>
         </DialogFooter>

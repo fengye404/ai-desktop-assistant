@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-
-export type Provider = 'anthropic' | 'openai';
+import type { Provider } from '../../types';
+import { electronApiClient } from '@/services/electron-api-client';
 
 // 所有可用的工具列表
 export const ALL_TOOLS = [
@@ -22,9 +22,9 @@ interface ConfigState {
   model: string;
   apiKey: string;
   baseURL: string;
-  allowedTools: string[];  // 永久允许自动执行的工具列表
-  sessionAllowedTools: string[];  // 本次会话临时允许的工具列表
-  allowAllForSession: boolean;  // 本次会话允许所有工具
+  allowedTools: string[];
+  sessionAllowedTools: string[];
+  allowAllForSession: boolean;
   isSettingsOpen: boolean;
   connectionStatus: { connected: boolean; message: string };
 
@@ -34,9 +34,9 @@ interface ConfigState {
   setBaseURL: (baseURL: string) => void;
   setAllowedTools: (tools: string[]) => void;
   toggleTool: (tool: string) => void;
-  allowToolForSession: (tool: string) => void;  // 本次会话允许
-  setAllowAllForSession: (allow: boolean) => void;  // 设置允许所有
-  clearSessionAllowedTools: () => void;  // 清除会话临时允许
+  allowToolForSession: (tool: string) => void;
+  setAllowAllForSession: (allow: boolean) => void;
+  clearSessionAllowedTools: () => void;
   setSettingsOpen: (open: boolean) => void;
   setConnectionStatus: (status: { connected: boolean; message: string }) => void;
   isToolAllowed: (tool: string) => boolean;
@@ -45,10 +45,9 @@ interface ConfigState {
   testConnection: () => Promise<void>;
 }
 
-// 默认允许的工具
 const DEFAULT_ALLOWED_TOOLS = ALL_TOOLS
-  .filter(t => t.defaultAllowed)
-  .map(t => t.name);
+  .filter((tool) => tool.defaultAllowed)
+  .map((tool) => tool.name);
 
 export const useConfigStore = create<ConfigState>((set, get) => ({
   provider: 'anthropic',
@@ -66,34 +65,38 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   setApiKey: (apiKey) => set({ apiKey }),
   setBaseURL: (baseURL) => set({ baseURL }),
   setAllowedTools: (tools) => set({ allowedTools: tools }),
+
   toggleTool: (tool) => set((state) => {
     const isAllowed = state.allowedTools.includes(tool);
     return {
       allowedTools: isAllowed
-        ? state.allowedTools.filter(t => t !== tool)
-        : [...state.allowedTools, tool]
+        ? state.allowedTools.filter((t) => t !== tool)
+        : [...state.allowedTools, tool],
     };
   }),
+
   allowToolForSession: (tool) => set((state) => ({
-    sessionAllowedTools: state.sessionAllowedTools.includes(tool) 
-      ? state.sessionAllowedTools 
-      : [...state.sessionAllowedTools, tool]
+    sessionAllowedTools: state.sessionAllowedTools.includes(tool)
+      ? state.sessionAllowedTools
+      : [...state.sessionAllowedTools, tool],
   })),
+
   setAllowAllForSession: (allow) => set({ allowAllForSession: allow }),
   clearSessionAllowedTools: () => set({ sessionAllowedTools: [], allowAllForSession: false }),
   setSettingsOpen: (open) => set({ isSettingsOpen: open }),
   setConnectionStatus: (status) => set({ connectionStatus: status }),
-  // 检查工具是否允许：全部允许 或 永久列表 或 会话临时列表
+
   isToolAllowed: (tool) => {
     const state = get();
-    return state.allowAllForSession || 
-           state.allowedTools.includes(tool) || 
-           state.sessionAllowedTools.includes(tool);
+    return (
+      state.allowAllForSession ||
+      state.allowedTools.includes(tool) ||
+      state.sessionAllowedTools.includes(tool)
+    );
   },
 
   loadConfig: async () => {
     try {
-      // 加载允许的工具列表（从 localStorage）
       const savedTools = localStorage.getItem('allowedTools');
       if (savedTools) {
         try {
@@ -103,34 +106,33 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
         }
       }
 
-      const config = await window.electronAPI.configLoad();
-      if (config && Object.keys(config).length > 0) {
-        const provider = (config.provider as Provider) || 'anthropic';
-        const model = config.model || '';
-        const baseURL = config.baseURL || '';
-        let apiKey = '';
+      const config = await electronApiClient.configLoad();
+      if (!config || Object.keys(config).length === 0) return;
 
-        set({ provider, model, baseURL });
+      const provider = (config.provider as Provider) || 'anthropic';
+      const model = config.model || '';
+      const baseURL = config.baseURL || '';
+      let apiKey = '';
 
-        if (config.apiKey) {
-          try {
-            apiKey = await window.electronAPI.decryptData(config.apiKey);
-            set({ apiKey });
-          } catch {
-            console.warn('Failed to decrypt API key');
-          }
+      set({ provider, model, baseURL });
+
+      if (config.apiKey) {
+        try {
+          apiKey = await electronApiClient.decryptData(config.apiKey);
+          set({ apiKey });
+        } catch {
+          console.warn('Failed to decrypt API key');
         }
+      }
 
-        // 初始化后端服务配置
-        if (apiKey) {
-          await window.electronAPI.setModelConfig({
-            provider,
-            model,
-            baseURL: baseURL || undefined,
-            apiKey,
-          });
-          set({ connectionStatus: { connected: true, message: '已配置' } });
-        }
+      if (apiKey) {
+        await electronApiClient.setModelConfig({
+          provider,
+          model,
+          baseURL: baseURL || undefined,
+          apiKey,
+        });
+        set({ connectionStatus: { connected: true, message: '已配置' } });
       }
     } catch (error) {
       console.error('Failed to load config:', error);
@@ -142,20 +144,19 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     try {
       let encryptedKey = '';
       if (apiKey) {
-        encryptedKey = await window.electronAPI.encryptData(apiKey);
+        encryptedKey = await electronApiClient.encryptData(apiKey);
       }
 
-      // 保存允许的工具列表到 localStorage
       localStorage.setItem('allowedTools', JSON.stringify(allowedTools));
 
-      await window.electronAPI.configSave({
+      await electronApiClient.configSave({
         provider,
         model,
         baseURL: baseURL || undefined,
         apiKey: encryptedKey,
       });
 
-      await window.electronAPI.setModelConfig({
+      await electronApiClient.setModelConfig({
         provider,
         model,
         baseURL: baseURL || undefined,
@@ -174,14 +175,14 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
     set({ connectionStatus: { connected: false, message: '测试中...' } });
 
     try {
-      await window.electronAPI.setModelConfig({
+      await electronApiClient.setModelConfig({
         provider,
         model,
         apiKey,
         baseURL: baseURL || undefined,
       });
 
-      const result = await window.electronAPI.testConnection();
+      const result = await electronApiClient.testConnection();
       set({
         connectionStatus: {
           connected: result.success,

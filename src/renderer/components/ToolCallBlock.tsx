@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { ChevronRight, ChevronDown, Terminal, CheckCircle2, XCircle, Loader2, AlertTriangle, Check, X, ShieldCheck, ShieldPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
@@ -28,8 +28,25 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   get_system_info: '系统信息',
 };
 
-export function ToolCallBlock({ toolCall, onApprove, onReject, onAllowForSession, onAllowAllForSession }: ToolCallBlockProps) {
+export const ToolCallBlock = memo(function ToolCallBlock({
+  toolCall,
+  onApprove,
+  onReject,
+  onAllowForSession,
+  onAllowAllForSession,
+}: ToolCallBlockProps) {
   const [isExpanded, setIsExpanded] = useState(toolCall.status === 'pending');
+  const isPending = toolCall.status === 'pending';
+  const isQueued = toolCall.status === 'queued';
+  const isInputStreaming = toolCall.inputStreaming === true;
+  const streamedInputLength = toolCall.inputText?.length ?? 0;
+
+  // Auto-expand whenever approval is needed or input arguments are streaming.
+  useEffect(() => {
+    if (isPending || isInputStreaming) {
+      setIsExpanded(true);
+    }
+  }, [isPending, isInputStreaming]);
 
   const displayName = TOOL_DISPLAY_NAMES[toolCall.name] || toolCall.name;
 
@@ -43,45 +60,51 @@ export function ToolCallBlock({ toolCall, onApprove, onReject, onAllowForSession
   };
 
   const mainParam = getMainParam();
-  const isPending = toolCall.status === 'pending';
+  const inputDisplay = isInputStreaming
+    ? (toolCall.inputText || '(参数生成中...)')
+    : JSON.stringify(toolCall.input, null, 2);
 
   return (
     <div className={cn(
-      "my-2 rounded-lg border overflow-hidden",
-      isPending 
-        ? "border-yellow-500/50 bg-yellow-500/5" 
-        : "border-border/50 bg-secondary/30"
+      'my-2 rounded-xl border overflow-hidden shadow-[0_8px_24px_hsl(var(--background)/0.45)]',
+      isPending
+        ? 'border-yellow-500/45 bg-yellow-500/10'
+        : isQueued
+          ? 'border-slate-400/35 bg-slate-500/10'
+        : 'border-border/60 bg-secondary/35'
     )}>
       {/* Header - 可点击展开/折叠 */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-secondary/50 transition-colors text-left"
+        className='w-full flex items-center gap-2 px-3 py-2.5 hover:bg-secondary/65 transition-colors text-left'
       >
         {/* 展开/折叠图标 */}
-        <span className="text-muted-foreground">
+        <span className='text-muted-foreground'>
           {isExpanded ? (
-            <ChevronDown className="h-4 w-4" />
+            <ChevronDown className='h-4 w-4' />
           ) : (
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className='h-4 w-4' />
           )}
         </span>
 
         {/* 工具图标 */}
         <div className={cn(
-          "w-6 h-6 rounded flex items-center justify-center",
-          toolCall.status === 'pending' && "bg-yellow-500/20",
-          toolCall.status === 'running' && "bg-blue-500/20",
-          toolCall.status === 'success' && "bg-green-500/20",
-          toolCall.status === 'error' && "bg-red-500/20",
+          'w-7 h-7 rounded-lg flex items-center justify-center border border-border/40',
+          toolCall.status === 'pending' && 'bg-yellow-500/20',
+          toolCall.status === 'queued' && 'bg-slate-500/20',
+          toolCall.status === 'running' && 'bg-blue-500/20',
+          toolCall.status === 'success' && 'bg-green-500/20',
+          toolCall.status === 'error' && 'bg-red-500/20'
         )}>
           {isPending ? (
-            <AlertTriangle className="h-3.5 w-3.5 text-yellow-400" />
+            <AlertTriangle className='h-3.5 w-3.5 text-yellow-400' />
           ) : (
             <Terminal className={cn(
-              "h-3.5 w-3.5",
-              toolCall.status === 'running' && "text-blue-400",
-              toolCall.status === 'success' && "text-green-400",
-              toolCall.status === 'error' && "text-red-400",
+              'h-3.5 w-3.5',
+              toolCall.status === 'queued' && 'text-slate-300',
+              toolCall.status === 'running' && 'text-blue-400',
+              toolCall.status === 'success' && 'text-green-400',
+              toolCall.status === 'error' && 'text-red-400'
             )} />
           )}
         </div>
@@ -89,98 +112,120 @@ export function ToolCallBlock({ toolCall, onApprove, onReject, onAllowForSession
         {/* 工具名称和参数 */}
         <div className="flex-1 min-w-0">
           {isPending && (
-            <span className="text-xs text-yellow-400 mr-2">需要确认</span>
+            <span className='text-[11px] uppercase tracking-[0.1em] text-yellow-300 mr-2'>Pending</span>
           )}
-          <span className="text-sm font-medium text-foreground">{displayName}</span>
+          {isQueued && !isPending && (
+            <span className='text-[11px] uppercase tracking-[0.1em] text-slate-300 mr-2'>Queued</span>
+          )}
+          {isInputStreaming && !isPending && (
+            <span className='text-[11px] uppercase tracking-[0.1em] text-blue-300 mr-2'>Streaming</span>
+          )}
+          <span className='text-sm font-medium text-foreground'>{displayName}</span>
           {mainParam && (
-            <span className="ml-2 text-xs text-muted-foreground truncate">
-              <code className="bg-background/50 px-1.5 py-0.5 rounded text-primary/80">
+            <span className='ml-2 text-xs text-muted-foreground truncate'>
+              <code className='bg-background/50 px-1.5 py-0.5 rounded text-primary/80'>
                 {mainParam.length > 40 ? mainParam.substring(0, 40) + '...' : mainParam}
               </code>
+            </span>
+          )}
+          {isInputStreaming && (
+            <span className='ml-2 text-[11px] text-blue-300/80'>
+              已接收 {streamedInputLength} 字符
             </span>
           )}
         </div>
 
         {/* 状态图标 */}
-        <div className="flex items-center gap-2">
+        <div className='flex items-center gap-2'>
+          {toolCall.status === 'queued' && (
+            <Loader2 className='h-4 w-4 text-slate-300' />
+          )}
           {toolCall.status === 'running' && (
-            <Loader2 className="h-4 w-4 text-blue-400 animate-spin" />
+            <Loader2 className='h-4 w-4 text-blue-400 animate-spin' />
           )}
           {toolCall.status === 'success' && (
-            <CheckCircle2 className="h-4 w-4 text-green-400" />
+            <CheckCircle2 className='h-4 w-4 text-green-400' />
           )}
           {toolCall.status === 'error' && (
-            <XCircle className="h-4 w-4 text-red-400" />
+            <XCircle className='h-4 w-4 text-red-400' />
           )}
         </div>
       </button>
 
       {/* 展开内容 */}
       {isExpanded && (
-        <div className="border-t border-border/50 bg-background/30">
+        <div className='border-t border-border/50 bg-background/35'>
           {/* 输入参数 */}
-          <div className="px-3 py-2 border-b border-border/30">
-            <div className="text-xs font-medium text-muted-foreground mb-1.5">输入参数</div>
-            <pre className="text-xs bg-background/50 rounded p-2 overflow-x-auto text-foreground/80 max-h-[200px]">
-              {JSON.stringify(toolCall.input, null, 2)}
+          <div className='px-3 py-2.5 border-b border-border/30'>
+            <div className='text-xs font-medium text-muted-foreground mb-1.5'>
+              输入参数
+              {isInputStreaming && (
+                <span className='ml-2 text-[11px] text-blue-300/90'>参数生成中...</span>
+              )}
+            </div>
+            <pre className={cn(
+              'text-xs bg-background/55 rounded-lg p-2 text-foreground/80 max-h-[200px] border border-border/40',
+              isInputStreaming ? 'overflow-auto whitespace-pre-wrap break-all' : 'overflow-x-auto'
+            )}>
+              {inputDisplay}
             </pre>
           </div>
 
           {/* 待确认状态 - 显示操作按钮 */}
           {isPending && (
-            <div className="px-3 py-3 space-y-2">
+            <div className='px-3 py-3 space-y-2'>
               {/* 快捷选项 */}
-              <div className="flex items-center gap-2">
+              <div className='flex items-center gap-2'>
                 <Button
-                  variant="ghost"
-                  size="sm"
+                  variant='ghost'
+                  size='sm'
                   onClick={(e) => {
                     e.stopPropagation();
                     onAllowForSession?.(toolCall.name);
                     onApprove?.(toolCall.id);
                   }}
-                  className="gap-1.5 text-xs text-muted-foreground hover:text-primary h-7 px-2"
+                  className='gap-1.5 text-xs text-muted-foreground hover:text-primary h-7 px-2 bg-secondary/40 border border-border/45 hover:bg-secondary/70'
                 >
-                  <ShieldCheck className="h-3.5 w-3.5" />
+                  <ShieldCheck className='h-3.5 w-3.5' />
                   本次会话允许该工具
                 </Button>
                 <Button
-                  variant="ghost"
-                  size="sm"
+                  variant='ghost'
+                  size='sm'
                   onClick={(e) => {
                     e.stopPropagation();
                     onAllowAllForSession?.();
                     onApprove?.(toolCall.id);
                   }}
-                  className="gap-1.5 text-xs text-muted-foreground hover:text-primary h-7 px-2"
+                  className='gap-1.5 text-xs text-muted-foreground hover:text-primary h-7 px-2 bg-secondary/40 border border-border/45 hover:bg-secondary/70'
                 >
-                  <ShieldPlus className="h-3.5 w-3.5" />
+                  <ShieldPlus className='h-3.5 w-3.5' />
                   本次会话允许所有
                 </Button>
               </div>
               {/* 主按钮 */}
-              <div className="flex items-center justify-end gap-2">
+              <div className='flex items-center justify-end gap-2'>
                 <Button
-                  variant="outline"
-                  size="sm"
+                  variant='outline'
+                  size='sm'
                   onClick={(e) => {
                     e.stopPropagation();
                     onReject?.(toolCall.id);
                   }}
-                  className="gap-1.5 text-muted-foreground"
+                  className='gap-1.5 text-muted-foreground'
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X className='h-3.5 w-3.5' />
                   取消
                 </Button>
                 <Button
-                  size="sm"
+                  size='sm'
                   onClick={(e) => {
                     e.stopPropagation();
                     onApprove?.(toolCall.id);
                   }}
-                  className="gap-1.5 bg-green-600 hover:bg-green-700"
+                  className='gap-1.5 bg-[linear-gradient(135deg,#3fcb8e,#2a9d7a)] text-black/85 hover:opacity-90'
                 >
-                  <Check className="h-3.5 w-3.5" />
+                  <Check className='h-3.5 w-3.5' />
                   允许
                 </Button>
               </div>
@@ -189,15 +234,15 @@ export function ToolCallBlock({ toolCall, onApprove, onReject, onAllowForSession
 
           {/* 输出结果 */}
           {(toolCall.output || toolCall.error) && (
-            <div className="px-3 py-2">
-              <div className="text-xs font-medium text-muted-foreground mb-1.5">
+            <div className='px-3 py-2.5'>
+              <div className='text-xs font-medium text-muted-foreground mb-1.5'>
                 {toolCall.status === 'error' ? '错误信息' : '输出结果'}
               </div>
               <pre className={cn(
-                "text-xs rounded p-2 overflow-x-auto max-h-[300px]",
-                toolCall.status === 'error' 
-                  ? "bg-red-500/10 text-red-300" 
-                  : "bg-background/50 text-foreground/80"
+                'text-xs rounded-lg p-2 overflow-x-auto max-h-[300px] border border-border/40',
+                toolCall.status === 'error'
+                  ? 'bg-red-500/10 text-red-300'
+                  : 'bg-background/55 text-foreground/80'
               )}>
                 {toolCall.error || toolCall.output || '(无输出)'}
               </pre>
@@ -207,7 +252,9 @@ export function ToolCallBlock({ toolCall, onApprove, onReject, onAllowForSession
       )}
     </div>
   );
-}
+});
+
+ToolCallBlock.displayName = 'ToolCallBlock';
 
 /**
  * 渲染多个工具调用块

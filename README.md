@@ -1,170 +1,72 @@
 # AI Desktop Assistant
 
-A cross-platform AI desktop assistant built with Electron and TypeScript, supporting Claude API and OpenAI-compatible APIs with secure storage and streaming responses.
+[简体中文](./README.zh-CN.md) | English
 
-## Features
+![Version](https://img.shields.io/badge/version-1.2.0-4c1)
+![Electron](https://img.shields.io/badge/Electron-28-47848F?logo=electron&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.3-3178C6?logo=typescript&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-22c55e)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-6b7280)
 
-- **Dual API Support**: Claude API and OpenAI-compatible API
-- **Wide Compatibility**: Works with OpenAI, Ollama, DeepSeek, Moonshot, Zhipu AI, and any OpenAI-compatible service
-- **Secure Storage**: API keys are encrypted using Electron's `safeStorage` API
-- **Streaming Responses**: Real-time display of AI-generated content
-- **Stream Cancellation**: Cancel ongoing responses with a single click
-- **Modern UI**: Glassmorphism design with smooth animations
-- **Cross-Platform**: macOS and Windows support
+An AI desktop assistant built with Electron + React + TypeScript.
 
-## Supported API Types
+## Tags
 
-### Claude API
-Use for Anthropic Claude API or any Claude-compatible endpoint.
+![AI Assistant](https://img.shields.io/badge/-AI%20Assistant-111827?style=flat-square)
+![Desktop App](https://img.shields.io/badge/-Desktop%20App-111827?style=flat-square)
+![Agent Tools](https://img.shields.io/badge/-Agent%20Tools-111827?style=flat-square)
+![Streaming](https://img.shields.io/badge/-Streaming-111827?style=flat-square)
+![Multi Provider](https://img.shields.io/badge/-Multi%20Provider-111827?style=flat-square)
 
-| Provider | Default Model | Base URL |
-|----------|---------------|----------|
-| Anthropic | claude-opus-4-6 | (leave empty or custom) |
+## Highlights
 
-### OpenAI Compatible API
-Use for any OpenAI-compatible service:
+- Multi-provider model access (Anthropic and OpenAI-compatible endpoints)
+- Streaming response rendering with tool-call visibility
+- Local session storage and secure API key persistence
+- Desktop-native workflow with Electron IPC architecture
 
-| Provider | Model | Base URL |
-|----------|-------|----------|
-| OpenAI | gpt-4o | (leave empty) |
-| Ollama (Local) | llama3.2 | http://localhost:11434/v1 |
-| DeepSeek | deepseek-chat | https://api.deepseek.com/v1 |
-| Moonshot (Kimi) | moonshot-v1-8k | https://api.moonshot.cn/v1 |
-| Zhipu AI (智谱) | glm-4 | https://open.bigmodel.cn/api/paas/v4 |
+## Tech Stack
 
-## Installation
+- Electron 28
+- React 19
+- TypeScript 5
+- Vite 7
+- Tailwind CSS 4
+- Zustand
+- better-sqlite3
+
+## Quick Start
 
 ```bash
-# Install dependencies
 npm install
-
-# Build and run
 npm start
 ```
 
 ## Configuration
 
-1. Click the **Settings** button in the top-right corner
-2. Configure:
-   - **API Type**: Claude API or OpenAI Compatible API
-   - **Model**: Model name (e.g., claude-opus-4-6, gpt-4o, deepseek-chat)
-   - **API Key**: Your API key (encrypted and stored securely)
-   - **Base URL**: Custom API endpoint (optional for OpenAI, required for others)
-3. Click **Save Configuration**
-4. Click **Test Connection** to verify
+Configure your provider and API key in **Settings**:
 
-### Security Note
-API keys are encrypted using Electron's `safeStorage` API:
-- **macOS**: Uses Keychain Access
-- **Windows**: Uses DPAPI (Data Protection API)
-- **Linux**: Uses Secret Service (e.g., GNOME Keyring), falls back to plain text if unavailable
+- Provider: Anthropic or OpenAI-compatible API
+- Model: e.g. `claude-opus-4-6`, `gpt-4o`, `deepseek-chat`
+- API Key: encrypted with Electron `safeStorage`
+- Base URL: optional for custom compatible endpoints
 
-## Building for Distribution
+## Scripts
 
 ```bash
-# Build for current platform
-npm run dist
-
-# Build for macOS
-npm run dist:mac
-
-# Build for Windows
-npm run dist:win
-```
-
-Output files will be in the `release/` directory.
-
-## Development
-
-### Project Structure
-
-```
-ai-desktop-assistant/
-├── src/
-│   ├── main.ts              # Electron main process
-│   ├── preload.ts           # Context bridge for IPC
-│   ├── renderer.ts          # Frontend logic
-│   ├── claude-service.ts    # Multi-provider AI service
-│   ├── types/
-│   │   └── index.ts         # Centralized type definitions
-│   └── utils/
-│       └── errors.ts        # Custom error classes
-├── public/
-│   └── index.html           # UI template (CSS included)
-├── docs/
-│   └── overview.md          # Architecture documentation
-├── dist/                    # Compiled JavaScript
-├── release/                 # Built installers
-├── package.json
-├── tsconfig.json
-├── electron-builder.yml     # Packaging configuration
-├── .eslintrc.json           # ESLint configuration
-└── .prettierrc              # Prettier configuration
-```
-
-### Available Scripts
-
-| Command | Description |
-|---------|-------------|
-| `npm run build` | Compile TypeScript |
-| `npm start` | Build and run the app |
-| `npm run dev` | Development mode |
-| `npm run lint` | Run ESLint |
-| `npm run lint:fix` | Fix ESLint issues |
-| `npm run format` | Format code with Prettier |
-| `npm run dist` | Build installers |
-
-## Examples
-
-### Claude API
-```
-API Type: Claude API
-Model: claude-opus-4-6
-API Key: your-anthropic-key
-Base URL: (leave empty or custom endpoint)
-```
-
-### Ollama (Local)
-```
-API Type: OpenAI Compatible API
-Model: llama3.2
-API Key: ollama (any value works)
-Base URL: http://localhost:11434/v1
-```
-
-### DeepSeek
-```
-API Type: OpenAI Compatible API
-Model: deepseek-chat
-API Key: your-deepseek-key
-Base URL: https://api.deepseek.com/v1
-```
-
-### Zhipu AI (智谱)
-```
-API Type: OpenAI Compatible API
-Model: glm-4
-API Key: your-zhipu-key
-Base URL: https://open.bigmodel.cn/api/paas/v4
+npm run build         # Build main + renderer
+npm run dev           # Dev mode
+npm run lint          # Lint
+npm run test:chat-stream
+npm run dist          # Package app
 ```
 
 ## Documentation
 
-- [Architecture Overview](docs/overview.md) - 详细架构文档
-- [Roadmap](docs/roadmap.md) - 功能路线图
-
-### Claude Agent SDK 官方文档
-
-本项目参考 Claude Agent SDK 进行功能规划和设计：
-
-| 文档 | 链接 |
-|------|------|
-| SDK 概览 | https://platform.claude.com/docs/zh-CN/agent-sdk/overview |
-| 快速开始 | https://platform.claude.com/docs/zh-CN/agent-sdk/quickstart |
-| TypeScript SDK | https://platform.claude.com/docs/zh-CN/agent-sdk/typescript |
-| Python SDK | https://platform.claude.com/docs/zh-CN/agent-sdk/python |
-
-> **Note**: 如果中文文档无法访问，可将 URL 中的 `zh-CN` 替换为 `en` 使用英文文档。
+- [Docs Home](./docs/README.md)
+- [Architecture](./docs/architecture/README.md)
+- [Guides](./docs/guides/README.md)
 
 ## License
 

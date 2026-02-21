@@ -4,7 +4,7 @@
 
 ## 产品定位
 
-AI Desktop Assistant 定位为类似 **Anthropic Claude Cowork** 的桌面 AI 协作工具，提供流畅的多轮对话体验、本地文件集成和可扩展的工具系统。
+AI Desktop Assistant 定位为类似 **Anthropic AI Cowork** 的桌面 AI 协作工具，提供流畅的多轮对话体验、本地文件集成和可扩展的工具系统。
 
 ## 文档目录
 
@@ -28,6 +28,16 @@ AI Desktop Assistant 定位为类似 **Anthropic Claude Cowork** 的桌面 AI �
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| v1.6.8 | 2026-02-21 | 启动韧性重构：新增渲染错误边界、主进程挂载健康探针、加载失败诊断页，黑屏可恢复可定位 |
+| v1.6.7 | 2026-02-21 | 渲染层黑屏兜底：Electron bridge 缺失时安全降级，初始化监听器增加异常防护 |
+| v1.6.6 | 2026-02-21 | Claude Provider Adapter 接口化：provider 分发由条件分支升级为注册表模式 |
+| v1.6.5 | 2026-02-21 | Chat Stream Listener runtime 重构：抽离缓冲/队列流程并补齐 11 条回放单测 |
+| v1.6.4 | 2026-02-21 | 增加 Chat Stream State 回放单测：Node 内置测试 + 独立编译配置 + 可执行脚本 |
+| v1.6.3 | 2026-02-21 | Chat Store 流式状态重构：提炼纯 reducer 模块，store 聚焦流程编排 |
+| v1.6.2 | 2026-02-21 | Claude Service 服务层重构：provider 流式模块拆分、常量模块化、编排层收敛 |
+| v1.6.1 | 2026-02-21 | 系统架构分析与优化：IPC 分域模块化、安全处理提纯、文档补全 |
+| v1.6.0 | 2026-02-21 | 前端与客户端架构重构：主进程分层、IPC 契约统一、store-service 解耦 |
+| v1.5.1 | 2026-02-21 | 页面展示与性能优化：首屏瘦身、懒加载高亮、可访问性增强 |
 | v1.5.0 | 2026-02-21 | 工具调用 UI 展示、权限设置、会话级确认、gzip 持久化 |
 | v1.4.0 | 2026-02-21 | 工具系统：实现 Agentic Loop、9 个内置工具、权限控制 |
 | v1.3.2 | 2026-02-20 | 前端重构为 Vite + React + Tailwind + shadcn/ui + Zustand |

@@ -15,7 +15,7 @@ export type MessageRole = 'user' | 'assistant';
 /**
  * Tool call status
  */
-export type ToolCallStatus = 'pending' | 'running' | 'success' | 'error';
+export type ToolCallStatus = 'pending' | 'queued' | 'running' | 'success' | 'error';
 
 /**
  * Tool call record for persistence
@@ -25,6 +25,8 @@ export interface ToolCallRecord {
   name: string;
   input: Record<string, unknown>;
   status: ToolCallStatus;
+  inputText?: string;
+  inputStreaming?: boolean;
   output?: string;
   error?: string;
 }
@@ -73,7 +75,16 @@ export interface SessionMeta {
 /**
  * Stream chunk types
  */
-export type ChunkType = 'text' | 'thinking' | 'error' | 'done' | 'tool_use' | 'tool_result';
+export type ChunkType =
+  | 'text'
+  | 'thinking'
+  | 'error'
+  | 'done'
+  | 'tool_use'
+  | 'tool_start'
+  | 'tool_input_delta'
+  | 'tool_result'
+  | 'processing';
 
 /**
  * Model configuration for AI providers
@@ -93,6 +104,8 @@ export interface StreamChunk {
   type: ChunkType;
   content: string;
   toolUse?: ToolUseInfo;
+  toolUseComplete?: boolean;
+  toolInputDelta?: ToolInputDeltaInfo;
 }
 
 /**
@@ -102,6 +115,16 @@ export interface ToolUseInfo {
   id: string;
   name: string;
   input: Record<string, unknown>;
+}
+
+/**
+ * Streaming tool input delta payload
+ */
+export interface ToolInputDeltaInfo {
+  id: string;
+  name: string;
+  delta: string;
+  accumulated: string;
 }
 
 // ==================== Tool System Types ====================

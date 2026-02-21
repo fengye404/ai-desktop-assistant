@@ -1,27 +1,49 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
-import type { ModelConfig, StreamChunk, ChatMessage, MessageItem, ToolCallRecord } from './types';
-import { StreamAbortedError, APIKeyError } from './utils/errors';
 import { SessionStorage } from './session-storage';
 import { ToolExecutor } from './tool-executor';
+import type { ChatMessage, MessageItem, ModelConfig, Provider, StreamChunk, ToolCallRecord } from './types';
+import { APIKeyError, StreamAbortedError } from './utils/errors';
+import { DEFAULT_MAX_TOKENS, MAX_HISTORY_LENGTH } from './ai/claude-service-constants';
+import { createProviderAdapterRegistry } from './ai/providers/provider-adapter-registry';
+import type { ProviderStreamAdapter } from './ai/providers/provider-stream-adapter';
 
-// Default max tokens for responses
-const DEFAULT_MAX_TOKENS = 4096;
+function isFailedToolResult(content: string): boolean {
+  return content.includes('failed');
+}
 
-// Maximum number of messages to keep in history
-const MAX_HISTORY_LENGTH = 50;
+function updateToolRecordResult(record: ToolCallRecord, content: string): void {
+  const failed = isFailedToolResult(content);
+  record.status = failed ? 'error' : 'success';
+  record.inputStreaming = false;
+  record.inputText = undefined;
+  if (failed) {
+    record.error = content;
+    record.output = undefined;
+  } else {
+    record.output = content;
+    record.error = undefined;
+  }
+}
 
-// Maximum tool use iterations to prevent infinite loops
-const MAX_TOOL_ITERATIONS = 10;
+function findLatestActiveToolItem(items: MessageItem[]): { type: 'tool'; toolCall: ToolCallRecord } | undefined {
+  return [...items].reverse().find(
+    (item): item is { type: 'tool'; toolCall: ToolCallRecord } =>
+      item.type === 'tool' &&
+      (item.toolCall.status === 'running' || item.toolCall.status === 'queued'),
+  );
+}
 
 export class ClaudeService {
   private anthropicClient: Anthropic | null = null;
   private openaiClient: OpenAI | null = null;
   private config: ModelConfig;
   private abortController: AbortController | null = null;
-  private sessionStorage: SessionStorage;
-  private toolExecutor: ToolExecutor;
-  private toolsEnabled: boolean = true;
+  private readonly sessionStorage: SessionStorage;
+  private readonly toolExecutor: ToolExecutor;
+  private readonly providerAdapters: Map<Provider, ProviderStreamAdapter>;
+  private toolsEnabled = true;
+  private anthropicFineGrainedToolStreamingEnabled = true;
 
   constructor(sessionStorage: SessionStorage) {
     this.sessionStorage = sessionStorage;
@@ -32,53 +54,41 @@ export class ClaudeService {
       model: 'claude-opus-4-6',
       maxTokens: DEFAULT_MAX_TOKENS,
     };
+
+    this.providerAdapters = createProviderAdapterRegistry({
+      getAnthropicClient: () => this.getAnthropicClient(),
+      getOpenAIClient: () => this.getOpenAIClient(),
+      isFineGrainedToolStreamingEnabled: () => this.anthropicFineGrainedToolStreamingEnabled,
+      disableFineGrainedToolStreaming: () => {
+        this.anthropicFineGrainedToolStreamingEnabled = false;
+      },
+    });
   }
 
-  /**
-   * Enable or disable tool usage
-   */
   setToolsEnabled(enabled: boolean): void {
     this.toolsEnabled = enabled;
   }
 
-  /**
-   * Set permission callback for tool execution
-   */
   setToolPermissionCallback(callback: (tool: string, input: Record<string, unknown>) => Promise<boolean>): void {
     this.toolExecutor.setPermissionCallback(callback);
   }
 
-  /**
-   * Set working directory for tool execution
-   */
   setWorkingDirectory(dir: string): void {
     this.toolExecutor.setWorkingDirectory(dir);
   }
 
-  /**
-   * Get message history from current session
-   */
   private get messageHistory(): ChatMessage[] {
     return this.sessionStorage.getMessages();
   }
 
-  /**
-   * Get the current message history
-   */
   getHistory(): ChatMessage[] {
     return this.sessionStorage.getMessages();
   }
 
-  /**
-   * Clear the message history
-   */
   clearHistory(): void {
     this.sessionStorage.clearMessages();
   }
 
-  /**
-   * Add a message to history
-   */
   private addToHistory(role: 'user' | 'assistant', content: string, items?: MessageItem[]): void {
     const messages = this.sessionStorage.getMessages();
     messages.push({
@@ -88,23 +98,22 @@ export class ClaudeService {
       timestamp: Date.now(),
     });
 
-    // Trim history if it exceeds max length
-    const trimmedMessages =
-      messages.length > MAX_HISTORY_LENGTH ? messages.slice(-MAX_HISTORY_LENGTH) : messages;
-
+    const trimmedMessages = messages.length > MAX_HISTORY_LENGTH ? messages.slice(-MAX_HISTORY_LENGTH) : messages;
     this.sessionStorage.updateMessages(trimmedMessages);
+  }
+
+  private removeLastMessageFromHistory(): void {
+    const messages = this.sessionStorage.getMessages();
+    messages.pop();
+    this.sessionStorage.updateMessages(messages);
   }
 
   setConfig(config: Partial<ModelConfig>): void {
     this.config = { ...this.config, ...config };
-    // Reset clients when config changes
     this.anthropicClient = null;
     this.openaiClient = null;
   }
 
-  /**
-   * Abort the current streaming operation
-   */
   abort(): void {
     if (this.abortController) {
       this.abortController.abort();
@@ -116,12 +125,14 @@ export class ClaudeService {
     if (!this.config.apiKey) {
       throw new APIKeyError('API key is required for Anthropic provider');
     }
+
     if (!this.anthropicClient) {
       this.anthropicClient = new Anthropic({
         apiKey: this.config.apiKey,
         baseURL: this.config.baseURL,
       });
     }
+
     return this.anthropicClient;
   }
 
@@ -129,100 +140,123 @@ export class ClaudeService {
     if (!this.config.apiKey) {
       throw new APIKeyError('API key is required for OpenAI-compatible provider');
     }
+
     if (!this.openaiClient) {
       this.openaiClient = new OpenAI({
         apiKey: this.config.apiKey,
         baseURL: this.config.baseURL,
       });
     }
+
     return this.openaiClient;
   }
 
-  /**
-   * Send a message with streaming
-   */
+  private streamProviderResponse(
+    systemPrompt?: string,
+  ): AsyncGenerator<StreamChunk, void, unknown> {
+    const adapter = this.providerAdapters.get(this.config.provider);
+    if (!adapter) {
+      throw new Error(`Unsupported provider: ${this.config.provider}`);
+    }
+
+    return adapter.createStream({
+      config: this.config,
+      messageHistory: this.messageHistory,
+      abortSignal: this.abortController?.signal ?? null,
+      systemPrompt,
+      toolsEnabled: this.toolsEnabled,
+      toolExecutor: this.toolExecutor,
+    });
+  }
+
   async *sendMessageStream(
     message: string,
     systemPrompt?: string,
   ): AsyncGenerator<StreamChunk, void, unknown> {
-    // Create new abort controller for this stream
     this.abortController = new AbortController();
-
-    // Add user message to history
     this.addToHistory('user', message);
 
-    // Collect assistant response and items
     let assistantResponse = '';
     const items: MessageItem[] = [];
     let currentTextContent = '';
     const toolCallsMap = new Map<string, ToolCallRecord>();
 
     try {
-      if (this.config.provider === 'anthropic') {
-        for await (const chunk of this.streamAnthropic(systemPrompt)) {
-          if (chunk.type === 'text') {
-            assistantResponse += chunk.content;
-            currentTextContent += chunk.content;
-          } else if (chunk.type === 'tool_use' && chunk.toolUse) {
-            // Save accumulated text before tool call
+      for await (const chunk of this.streamProviderResponse(systemPrompt)) {
+        if (chunk.type === 'text') {
+          assistantResponse += chunk.content;
+          currentTextContent += chunk.content;
+        } else if (chunk.type === 'tool_input_delta' && chunk.toolInputDelta) {
+          const toolRecord = toolCallsMap.get(chunk.toolInputDelta.id);
+          if (toolRecord) {
+            toolRecord.inputText = chunk.toolInputDelta.accumulated;
+            toolRecord.inputStreaming = true;
+          }
+        } else if (chunk.type === 'tool_use' && chunk.toolUse) {
+          const existingToolRecord = toolCallsMap.get(chunk.toolUse.id);
+
+          if (existingToolRecord) {
+            existingToolRecord.name = chunk.toolUse.name;
+            existingToolRecord.input = chunk.toolUse.input;
+            existingToolRecord.inputStreaming = chunk.toolUseComplete === false;
+            existingToolRecord.inputText = chunk.toolUseComplete === false ? '' : undefined;
+            if (existingToolRecord.status !== 'pending') {
+              existingToolRecord.status = 'queued';
+            }
+          } else {
             if (currentTextContent) {
               items.push({ type: 'text', content: currentTextContent });
               currentTextContent = '';
             }
-            // Create tool call record
+
             const toolRecord: ToolCallRecord = {
               id: chunk.toolUse.id,
               name: chunk.toolUse.name,
               input: chunk.toolUse.input,
-              status: 'running',
+              status: 'queued',
+              inputStreaming: chunk.toolUseComplete === false,
+              inputText: chunk.toolUseComplete === false ? '' : undefined,
             };
             toolCallsMap.set(chunk.toolUse.id, toolRecord);
             items.push({ type: 'tool', toolCall: toolRecord });
-          } else if (chunk.type === 'tool_result') {
-            // Update the last tool call with result
-            const lastToolItem = [...items].reverse().find(
-              (item): item is { type: 'tool'; toolCall: ToolCallRecord } => 
-                item.type === 'tool' && item.toolCall.status === 'running'
-            );
-            if (lastToolItem) {
-              const isError = chunk.content.includes('failed');
-              lastToolItem.toolCall.status = isError ? 'error' : 'success';
-              if (isError) {
-                lastToolItem.toolCall.error = chunk.content;
-              } else {
-                lastToolItem.toolCall.output = chunk.content;
-              }
+          }
+        } else if (chunk.type === 'tool_start' && chunk.toolUse) {
+          const toolRecord = toolCallsMap.get(chunk.toolUse.id);
+          if (toolRecord && toolRecord.status !== 'pending') {
+            toolRecord.status = 'running';
+          }
+        } else if (chunk.type === 'tool_result') {
+          const targetToolId = chunk.toolUse?.id;
+          const targetToolRecord = targetToolId ? toolCallsMap.get(targetToolId) : undefined;
+
+          if (targetToolRecord) {
+            updateToolRecordResult(targetToolRecord, chunk.content);
+          } else {
+            const fallbackToolItem = findLatestActiveToolItem(items);
+            if (!fallbackToolItem) {
+              yield chunk;
+              continue;
             }
+            updateToolRecordResult(fallbackToolItem.toolCall, chunk.content);
           }
-          yield chunk;
         }
-      } else {
-        for await (const chunk of this.streamOpenAI(systemPrompt)) {
-          if (chunk.type === 'text') {
-            assistantResponse += chunk.content;
-            currentTextContent += chunk.content;
-          }
-          yield chunk;
-        }
+
+        yield chunk;
       }
 
-      // Save remaining text content
       if (currentTextContent) {
         items.push({ type: 'text', content: currentTextContent });
       }
 
-      // Add assistant response to history with items
       if (assistantResponse || items.length > 0) {
         this.addToHistory('assistant', assistantResponse, items.length > 0 ? items : undefined);
       }
     } catch (error) {
-      // Remove the user message if there was an error
       if (error instanceof StreamAbortedError) {
-        const messages = this.sessionStorage.getMessages();
-        messages.pop();
-        this.sessionStorage.updateMessages(messages);
+        this.removeLastMessageFromHistory();
         throw error;
       }
+
       console.error('[claude-service] Stream error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       yield { type: 'error', content: `Error: ${errorMessage}` };
@@ -231,185 +265,6 @@ export class ClaudeService {
     }
   }
 
-  /**
-   * Stream using Anthropic API with tool support
-   */
-  private async *streamAnthropic(
-    systemPrompt?: string,
-  ): AsyncGenerator<StreamChunk, void, unknown> {
-    const client = this.getAnthropicClient();
-    const maxTokens = this.config.maxTokens ?? DEFAULT_MAX_TOKENS;
-
-    // Convert message history to Anthropic format
-    const messages: Anthropic.MessageParam[] = this.messageHistory.map((msg) => ({
-      role: msg.role as 'user' | 'assistant',
-      content: msg.content,
-    }));
-
-    // Get tool definitions if enabled
-    const tools = this.toolsEnabled ? this.toolExecutor.getToolDefinitions() : undefined;
-
-    let iteration = 0;
-
-    while (iteration < MAX_TOOL_ITERATIONS) {
-      iteration++;
-
-      const stream = client.messages.stream(
-        {
-          model: this.config.model,
-          max_tokens: maxTokens,
-          system: systemPrompt || 'You are a helpful AI assistant. You have access to tools to help complete tasks.',
-          messages,
-          tools: tools as Anthropic.Tool[],
-        },
-        {
-          signal: this.abortController?.signal,
-        },
-      );
-
-      let textContent = '';
-      const toolUses: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
-      let currentToolName = '';
-      let currentToolId = '';
-      let currentToolInput = '';
-
-      for await (const event of stream) {
-        // Check for abort
-        if (this.abortController?.signal.aborted) {
-          throw new StreamAbortedError();
-        }
-
-        if (event.type === 'content_block_start') {
-          if (event.content_block.type === 'tool_use') {
-            currentToolName = event.content_block.name;
-            currentToolId = event.content_block.id;
-            currentToolInput = '';
-          }
-        } else if (event.type === 'content_block_delta') {
-          if (event.delta.type === 'text_delta') {
-            textContent += event.delta.text;
-            yield { type: 'text', content: event.delta.text };
-          } else if (event.delta.type === 'input_json_delta') {
-            currentToolInput += event.delta.partial_json;
-          }
-        } else if (event.type === 'content_block_stop') {
-          if (currentToolName && currentToolId) {
-            try {
-              const input = currentToolInput ? JSON.parse(currentToolInput) : {};
-              toolUses.push({ id: currentToolId, name: currentToolName, input });
-
-              // Notify UI about tool use
-              yield {
-                type: 'tool_use',
-                content: `Using tool: ${currentToolName}`,
-                toolUse: { id: currentToolId, name: currentToolName, input },
-              };
-            } catch {
-              // Invalid JSON, skip this tool use
-            }
-            currentToolName = '';
-            currentToolId = '';
-            currentToolInput = '';
-          }
-        }
-      }
-
-      // If no tool uses, we're done
-      if (toolUses.length === 0) {
-        break;
-      }
-
-      // Build assistant message with tool uses
-      const assistantContent: Array<
-        | { type: 'text'; text: string }
-        | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
-      > = [];
-      if (textContent) {
-        assistantContent.push({ type: 'text', text: textContent });
-      }
-      for (const toolUse of toolUses) {
-        assistantContent.push({
-          type: 'tool_use',
-          id: toolUse.id,
-          name: toolUse.name,
-          input: toolUse.input,
-        });
-      }
-
-      // Add assistant message to conversation
-      messages.push({ role: 'assistant', content: assistantContent });
-
-      // Execute tools and collect results
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
-      for (const toolUse of toolUses) {
-        const result = await this.toolExecutor.executeTool(toolUse.name, toolUse.input);
-
-        yield {
-          type: 'tool_result',
-          content: result.success
-            ? (result.output || 'Success')
-            : `Tool ${toolUse.name} failed: ${result.error}`,
-        };
-
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: toolUse.id,
-          content: result.success ? (result.output || 'Success') : (result.error || 'Unknown error'),
-          is_error: !result.success,
-        });
-      }
-
-      // Add tool results to conversation
-      messages.push({ role: 'user', content: toolResults });
-    }
-  }
-
-  /**
-   * Stream using OpenAI-compatible API
-   */
-  private async *streamOpenAI(
-    systemPrompt?: string,
-  ): AsyncGenerator<StreamChunk, void, unknown> {
-    const client = this.getOpenAIClient();
-    const maxTokens = this.config.maxTokens ?? DEFAULT_MAX_TOKENS;
-
-    // Convert message history to OpenAI format
-    const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
-      { role: 'system', content: systemPrompt || 'You are a helpful AI assistant.' },
-      ...this.messageHistory.map((msg) => ({
-        role: msg.role as 'user' | 'assistant',
-        content: msg.content,
-      })),
-    ];
-
-    const stream = await client.chat.completions.create(
-      {
-        model: this.config.model,
-        messages,
-        stream: true,
-        max_tokens: maxTokens,
-      },
-      {
-        signal: this.abortController?.signal,
-      },
-    );
-
-    for await (const chunk of stream) {
-      // Check for abort
-      if (this.abortController?.signal.aborted) {
-        throw new StreamAbortedError();
-      }
-
-      const content = chunk.choices[0]?.delta?.content;
-      if (content) {
-        yield { type: 'text', content };
-      }
-    }
-  }
-
-  /**
-   * Send a message and get the complete response
-   */
   async sendMessage(message: string, systemPrompt?: string): Promise<string> {
     const chunks: string[] = [];
     for await (const chunk of this.sendMessageStream(message, systemPrompt)) {
@@ -423,17 +278,14 @@ export class ClaudeService {
     return chunks.join('');
   }
 
-  /**
-   * Test API connection with timeout
-   */
   async testConnection(): Promise<{ success: boolean; message: string }> {
-    const timeout = 15000; // 15 seconds timeout
+    const timeout = 15000;
 
     try {
       await Promise.race([
         this.sendMessage('Hi'),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('连接超时，请检查网络或 API 地址')), timeout)
+          setTimeout(() => reject(new Error('连接超时，请检查网络或 API 地址')), timeout),
         ),
       ]);
       return { success: true, message: '连接成功！' };
@@ -443,9 +295,6 @@ export class ClaudeService {
     }
   }
 
-  /**
-   * Cleanup resources
-   */
   cleanup(): void {
     this.abort();
     this.anthropicClient = null;

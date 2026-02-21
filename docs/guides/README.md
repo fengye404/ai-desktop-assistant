@@ -2,6 +2,11 @@
 
 本文档提供 AI Desktop Assistant 的配置说明和常见问题解答。
 
+## 优化记录
+
+- [启动黑屏排查指南（2026-02-21）](./startup-black-screen-troubleshooting-2026-02-21.md)
+- [页面展示与性能优化记录（2026-02-21）](./ui-performance-optimization-2026-02-21.md)
+
 ## 快速开始
 
 ### 1. 安装依赖
@@ -26,16 +31,16 @@ npm start
 
 | API 类型 | 说明 | 适用场景 |
 |---------|------|---------|
-| Claude API | Anthropic 官方 API | Claude 系列模型 |
+| Anthropic API | Anthropic 官方 API | Anthropic 系列模型 |
 | OpenAI 兼容 API | 任何 OpenAI 兼容服务 | OpenAI、Ollama、DeepSeek 等 |
 
 ### 配置示例
 
-#### Claude API (Anthropic)
+#### Anthropic API (Anthropic)
 
 ```
-API 类型: Claude API (Anthropic)
-模型: claude-opus-4-6
+API 类型: Anthropic API (Anthropic)
+模型: gpt-4o-mini
 API Key: sk-ant-xxxxx
 Base URL: (留空使用官方)
 ```
@@ -152,7 +157,7 @@ npm run dist:win
 **解决方案**：
 1. 检查网络连接
 2. 确认 API 地址正确
-3. Claude 模型选择 "Claude API"，其他选择 "OpenAI 兼容 API"
+3. Anthropic 模型选择 "Anthropic API"，其他选择 "OpenAI 兼容 API"
 
 ### API Key 无法保存
 

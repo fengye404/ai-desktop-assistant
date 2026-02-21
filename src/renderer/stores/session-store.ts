@@ -1,29 +1,6 @@
 import { create } from 'zustand';
-import type { MessageItem } from '../../types';
-
-interface SessionMeta {
-  id: string;
-  title: string;
-  messageCount: number;
-  createdAt: number;
-  updatedAt: number;
-  preview: string;
-}
-
-export interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-  items?: MessageItem[];  // 支持工具调用记录
-  timestamp?: number;
-}
-
-interface Session {
-  id: string;
-  title: string;
-  messages: ChatMessage[];
-  createdAt: number;
-  updatedAt: number;
-}
+import type { ChatMessage, SessionMeta } from '../../types';
+import { electronApiClient } from '@/services/electron-api-client';
 
 interface SessionState {
   sessions: SessionMeta[];
@@ -46,17 +23,17 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   loadSessions: async () => {
     try {
-      const sessions = await window.electronAPI.sessionList();
+      const sessions = await electronApiClient.sessionList();
       set({ sessions });
 
       if (sessions.length > 0 && !get().currentSessionId) {
-        const session = await window.electronAPI.sessionSwitch(sessions[0].id);
-        if (session) {
-          set({
-            currentSessionId: session.id,
-            currentMessages: session.messages,
-          });
-        }
+        const session = await electronApiClient.sessionSwitch(sessions[0].id);
+        if (!session) return;
+
+        set({
+          currentSessionId: session.id,
+          currentMessages: session.messages,
+        });
       }
     } catch (error) {
       console.error('Failed to load sessions:', error);
@@ -65,7 +42,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   createSession: async () => {
     try {
-      const session = await window.electronAPI.sessionCreate();
+      const session = await electronApiClient.sessionCreate();
       set({
         currentSessionId: session.id,
         currentMessages: [],
@@ -80,14 +57,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (id === get().currentSessionId) return;
 
     try {
-      const session = await window.electronAPI.sessionSwitch(id);
-      if (session) {
-        set({
-          currentSessionId: session.id,
-          currentMessages: session.messages,
-        });
-        await get().refreshSessions();
-      }
+      const session = await electronApiClient.sessionSwitch(id);
+      if (!session) return;
+
+      set({
+        currentSessionId: session.id,
+        currentMessages: session.messages,
+      });
+      await get().refreshSessions();
     } catch (error) {
       console.error('Failed to switch session:', error);
     }
@@ -95,10 +72,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   deleteSession: async (id: string) => {
     try {
-      await window.electronAPI.sessionDelete(id);
+      await electronApiClient.sessionDelete(id);
 
       if (id === get().currentSessionId) {
-        const sessions = await window.electronAPI.sessionList();
+        const sessions = await electronApiClient.sessionList();
         if (sessions.length > 0) {
           await get().switchSession(sessions[0].id);
         } else {
@@ -114,7 +91,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   renameSession: async (id: string, title: string) => {
     try {
-      await window.electronAPI.sessionRename(id, title);
+      await electronApiClient.sessionRename(id, title);
       await get().refreshSessions();
     } catch (error) {
       console.error('Failed to rename session:', error);
@@ -125,7 +102,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   refreshSessions: async () => {
     try {
-      const sessions = await window.electronAPI.sessionList();
+      const sessions = await electronApiClient.sessionList();
       set({ sessions });
     } catch (error) {
       console.error('Failed to refresh sessions:', error);
