@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { MessageItem } from '../../types';
 
 interface SessionMeta {
   id: string;
@@ -9,9 +10,10 @@ interface SessionMeta {
   preview: string;
 }
 
-interface ChatMessage {
+export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  items?: MessageItem[];  // 支持工具调用记录
   timestamp?: number;
 }
 

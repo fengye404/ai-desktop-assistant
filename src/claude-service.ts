@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
-import type { ModelConfig, StreamChunk, ChatMessage } from './types';
+import type { ModelConfig, StreamChunk, ChatMessage, MessageItem, ToolCallRecord } from './types';
 import { StreamAbortedError, APIKeyError } from './utils/errors';
 import { SessionStorage } from './session-storage';
 import { ToolExecutor } from './tool-executor';
@@ -79,11 +79,12 @@ export class ClaudeService {
   /**
    * Add a message to history
    */
-  private addToHistory(role: 'user' | 'assistant', content: string): void {
+  private addToHistory(role: 'user' | 'assistant', content: string, items?: MessageItem[]): void {
     const messages = this.sessionStorage.getMessages();
     messages.push({
       role,
       content,
+      items,
       timestamp: Date.now(),
     });
 
@@ -150,14 +151,48 @@ export class ClaudeService {
     // Add user message to history
     this.addToHistory('user', message);
 
-    // Collect assistant response
+    // Collect assistant response and items
     let assistantResponse = '';
+    const items: MessageItem[] = [];
+    let currentTextContent = '';
+    const toolCallsMap = new Map<string, ToolCallRecord>();
 
     try {
       if (this.config.provider === 'anthropic') {
         for await (const chunk of this.streamAnthropic(systemPrompt)) {
           if (chunk.type === 'text') {
             assistantResponse += chunk.content;
+            currentTextContent += chunk.content;
+          } else if (chunk.type === 'tool_use' && chunk.toolUse) {
+            // Save accumulated text before tool call
+            if (currentTextContent) {
+              items.push({ type: 'text', content: currentTextContent });
+              currentTextContent = '';
+            }
+            // Create tool call record
+            const toolRecord: ToolCallRecord = {
+              id: chunk.toolUse.id,
+              name: chunk.toolUse.name,
+              input: chunk.toolUse.input,
+              status: 'running',
+            };
+            toolCallsMap.set(chunk.toolUse.id, toolRecord);
+            items.push({ type: 'tool', toolCall: toolRecord });
+          } else if (chunk.type === 'tool_result') {
+            // Update the last tool call with result
+            const lastToolItem = [...items].reverse().find(
+              (item): item is { type: 'tool'; toolCall: ToolCallRecord } => 
+                item.type === 'tool' && item.toolCall.status === 'running'
+            );
+            if (lastToolItem) {
+              const isError = chunk.content.includes('failed');
+              lastToolItem.toolCall.status = isError ? 'error' : 'success';
+              if (isError) {
+                lastToolItem.toolCall.error = chunk.content;
+              } else {
+                lastToolItem.toolCall.output = chunk.content;
+              }
+            }
           }
           yield chunk;
         }
@@ -165,14 +200,20 @@ export class ClaudeService {
         for await (const chunk of this.streamOpenAI(systemPrompt)) {
           if (chunk.type === 'text') {
             assistantResponse += chunk.content;
+            currentTextContent += chunk.content;
           }
           yield chunk;
         }
       }
 
-      // Add assistant response to history
-      if (assistantResponse) {
-        this.addToHistory('assistant', assistantResponse);
+      // Save remaining text content
+      if (currentTextContent) {
+        items.push({ type: 'text', content: currentTextContent });
+      }
+
+      // Add assistant response to history with items
+      if (assistantResponse || items.length > 0) {
+        this.addToHistory('assistant', assistantResponse, items.length > 0 ? items : undefined);
       }
     } catch (error) {
       // Remove the user message if there was an error
@@ -306,7 +347,7 @@ export class ClaudeService {
         yield {
           type: 'tool_result',
           content: result.success
-            ? `Tool ${toolUse.name} completed`
+            ? (result.output || 'Success')
             : `Tool ${toolUse.name} failed: ${result.error}`,
         };
 

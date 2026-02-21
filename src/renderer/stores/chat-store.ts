@@ -1,6 +1,10 @@
 import { create } from 'zustand';
-import { useSessionStore } from './session-store';
-import type { ToolCall } from '../components/ToolCallBlock';
+import { useSessionStore, type ChatMessage } from './session-store';
+import { useConfigStore } from './config-store';
+import type { ToolCallRecord, MessageItem } from '../../types';
+
+// Re-export for ToolCallBlock component
+export type ToolCall = ToolCallRecord;
 
 interface ToolUse {
   id: string;
@@ -20,25 +24,26 @@ interface ToolApprovalRequest {
   description: string;
 }
 
+// 流式内容块类型 - 与 MessageItem 兼容
+export type StreamItem = MessageItem;
+
 interface ChatState {
   isLoading: boolean;
-  streamingContent: string;
-  toolCalls: ToolCall[];
-  toolApprovalRequest: ToolApprovalRequest | null;
+  streamItems: StreamItem[];  // 按顺序存储文字和工具调用
+  pendingApprovalId: string | null;
 
   sendMessage: (message: string) => Promise<void>;
   cancelStream: () => Promise<void>;
   clearHistory: () => Promise<void>;
-  setToolApprovalRequest: (request: ToolApprovalRequest | null) => void;
-  respondToolApproval: (approved: boolean) => void;
+  approveToolCall: (id: string) => void;
+  rejectToolCall: (id: string) => void;
   initStreamListener: () => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
   isLoading: false,
-  streamingContent: '',
-  toolCalls: [],
-  toolApprovalRequest: null,
+  streamItems: [],
+  pendingApprovalId: null,
 
   sendMessage: async (message: string) => {
     // 立即显示用户消息
@@ -49,51 +54,89 @@ export const useChatStore = create<ChatState>((set, get) => ({
       { role: 'user', content: message, timestamp: Date.now() }
     ]);
 
-    set({ isLoading: true, streamingContent: '', toolCalls: [] });
+    set({ isLoading: true, streamItems: [] });
 
     try {
       await window.electronAPI.sendMessageStream(message);
     } catch (error) {
       console.error('[chat-store] Send message error:', error);
-      set({ isLoading: false, streamingContent: '', toolCalls: [] });
+      set({ isLoading: false, streamItems: [] });
     }
   },
 
   cancelStream: async () => {
     await window.electronAPI.abortStream();
-    set({ isLoading: false, streamingContent: '', toolCalls: [] });
+    set({ isLoading: false, streamItems: [] });
   },
 
   clearHistory: async () => {
     await window.electronAPI.clearHistory();
     useSessionStore.getState().setCurrentMessages([]);
+    set({ streamItems: [] });
     await useSessionStore.getState().refreshSessions();
   },
 
-  setToolApprovalRequest: (request) => set({ toolApprovalRequest: request }),
+  approveToolCall: (id: string) => {
+    // 更新工具状态为 running
+    set((state) => {
+      const updatedItems = state.streamItems.map(item => {
+        if (item.type === 'tool' && item.toolCall.id === id) {
+          return { ...item, toolCall: { ...item.toolCall, status: 'running' as const } };
+        }
+        return item;
+      });
+      return { streamItems: updatedItems, pendingApprovalId: null };
+    });
+    // 通知主进程继续执行
+    window.electronAPI.respondToolApproval(true);
+  },
 
-  respondToolApproval: (approved) => {
-    window.electronAPI.respondToolApproval(approved);
-    set({ toolApprovalRequest: null });
+  rejectToolCall: (id: string) => {
+    // 更新工具状态为 error
+    set((state) => {
+      const updatedItems = state.streamItems.map(item => {
+        if (item.type === 'tool' && item.toolCall.id === id) {
+          return { 
+            ...item, 
+            toolCall: { ...item.toolCall, status: 'error' as const, error: '用户拒绝执行' } 
+          };
+        }
+        return item;
+      });
+      return { streamItems: updatedItems, pendingApprovalId: null };
+    });
+    // 通知主进程拒绝
+    window.electronAPI.respondToolApproval(false);
   },
 
   initStreamListener: () => {
     window.electronAPI.onStreamChunk((chunk: StreamChunk) => {
       if (chunk.type === 'done') {
         const sessionStore = useSessionStore.getState();
-        const { streamingContent } = get();
+        const { streamItems } = get();
         
-        // 先将流式内容添加到消息列表，避免闪烁
-        if (streamingContent) {
+        // 合并文字内容用于 content 字段（兼容旧版本）
+        const textContent = streamItems
+          .filter((item): item is { type: 'text'; content: string } => item.type === 'text')
+          .map(item => item.content)
+          .join('');
+        
+        // 创建包含 items 的消息并持久化
+        if (streamItems.length > 0) {
           const currentMessages = sessionStore.currentMessages;
           sessionStore.setCurrentMessages([
             ...currentMessages,
-            { role: 'assistant', content: streamingContent, timestamp: Date.now() }
+            { 
+              role: 'assistant', 
+              content: textContent,
+              items: streamItems,  // 保存完整的 items 用于渲染
+              timestamp: Date.now() 
+            }
           ]);
         }
         
-        // 清空状态
-        set({ isLoading: false, streamingContent: '', toolCalls: [] });
+        // 清空 streamItems，数据已持久化到 currentMessages
+        set({ isLoading: false, streamItems: [] });
         
         // 后台刷新确保数据一致性
         sessionStore.refreshSessions();
@@ -101,51 +144,99 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
 
       if (chunk.type === 'text') {
-        // 每次都获取最新的 streamingContent
-        set((state) => ({ streamingContent: state.streamingContent + chunk.content }));
+        // 追加文字到最后一个 text 块，或创建新的 text 块
+        set((state) => {
+          const items = [...state.streamItems];
+          const lastItem = items[items.length - 1];
+          
+          if (lastItem && lastItem.type === 'text') {
+            // 追加到已有的 text 块
+            items[items.length - 1] = { type: 'text', content: lastItem.content + chunk.content };
+          } else {
+            // 创建新的 text 块
+            items.push({ type: 'text', content: chunk.content });
+          }
+          
+          return { streamItems: items };
+        });
       } else if (chunk.type === 'tool_use' && chunk.toolUse) {
-        // 工具开始调用
+        // 创建新的工具调用块
         const newToolCall: ToolCall = {
           id: chunk.toolUse.id,
           name: chunk.toolUse.name,
           input: chunk.toolUse.input,
           status: 'running',
         };
-        set((state) => ({ toolCalls: [...state.toolCalls, newToolCall] }));
+        set((state) => ({
+          streamItems: [...state.streamItems, { type: 'tool', toolCall: newToolCall }]
+        }));
       } else if (chunk.type === 'tool_result') {
-        // 工具执行完成，更新状态
+        // 更新对应的工具调用状态
         const isError = chunk.content.includes('failed');
         set((state) => {
-          const updatedToolCalls = [...state.toolCalls];
-          // 更新最后一个 running 状态的工具
-          for (let i = updatedToolCalls.length - 1; i >= 0; i--) {
-            if (updatedToolCalls[i].status === 'running') {
-              updatedToolCalls[i] = {
-                ...updatedToolCalls[i],
-                status: isError ? 'error' : 'success',
-                output: isError ? undefined : chunk.content,
-                error: isError ? chunk.content : undefined,
+          const items = [...state.streamItems];
+          // 从后往前找到最后一个 running 状态的工具
+          for (let i = items.length - 1; i >= 0; i--) {
+            const item = items[i];
+            if (item.type === 'tool' && item.toolCall.status === 'running') {
+              items[i] = {
+                type: 'tool',
+                toolCall: {
+                  ...item.toolCall,
+                  status: isError ? 'error' : 'success',
+                  output: isError ? undefined : chunk.content,
+                  error: isError ? chunk.content : undefined,
+                }
               };
               break;
             }
           }
-          return { toolCalls: updatedToolCalls };
+          return { streamItems: items };
         });
       } else if (chunk.type === 'error') {
         console.error('[chat-store] Stream error:', chunk.content);
-        // 显示错误信息给用户
         const sessionStore = useSessionStore.getState();
         const currentMessages = sessionStore.currentMessages;
         sessionStore.setCurrentMessages([
           ...currentMessages,
           { role: 'assistant', content: `❌ ${chunk.content}`, timestamp: Date.now() }
         ]);
-        set({ isLoading: false, streamingContent: '', toolCalls: [] });
+        set({ isLoading: false, streamItems: [] });
       }
     });
 
     window.electronAPI.onToolApprovalRequest((request: ToolApprovalRequest) => {
-      set({ toolApprovalRequest: request });
+      const isAllowed = useConfigStore.getState().isToolAllowed(request.tool);
+      
+      if (isAllowed) {
+        window.electronAPI.respondToolApproval(true);
+      } else {
+        // 找到对应的工具调用并设置为 pending
+        set((state) => {
+          const items = state.streamItems.map(item => {
+            if (item.type === 'tool' && 
+                item.toolCall.name === request.tool && 
+                item.toolCall.status === 'running') {
+              return { 
+                ...item, 
+                toolCall: { ...item.toolCall, status: 'pending' as const } 
+              };
+            }
+            return item;
+          });
+          
+          // 找到 pending 的工具 ID
+          const pendingItem = items.find(
+            (item): item is { type: 'tool'; toolCall: ToolCall } => 
+              item.type === 'tool' && item.toolCall.status === 'pending'
+          );
+          
+          return { 
+            streamItems: items, 
+            pendingApprovalId: pendingItem?.toolCall.id || null 
+          };
+        });
+      }
     });
   },
 }));

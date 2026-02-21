@@ -1,4 +1,4 @@
-import { Settings2, Check, AlertCircle, Zap } from 'lucide-react';
+import { Settings2, Check, AlertCircle, Zap, Wrench } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -8,7 +8,7 @@ import {
 } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { useConfigStore, Provider } from '@/stores/config-store';
+import { useConfigStore, Provider, ALL_TOOLS } from '@/stores/config-store';
 import { cn } from '@/lib/utils';
 
 export function SettingsDialog() {
@@ -23,6 +23,8 @@ export function SettingsDialog() {
     setApiKey,
     baseURL,
     setBaseURL,
+    allowedTools,
+    toggleTool,
     connectionStatus,
     saveConfig,
     testConnection,
@@ -43,7 +45,7 @@ export function SettingsDialog() {
           </div>
         </DialogHeader>
 
-        <div className="px-6 py-5 space-y-5">
+        <div className="px-6 py-5 space-y-5 overflow-y-auto max-h-[60vh]">
           {/* Provider */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground/90">AI 提供商</label>
@@ -114,6 +116,38 @@ export function SettingsDialog() {
             )}>
               {connectionStatus.message}
             </span>
+          </div>
+
+          {/* Tool Permissions */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Wrench className="h-4 w-4 text-muted-foreground" />
+              <label className="text-sm font-medium text-foreground/90">工具自动执行</label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              勾选的工具将自动执行，无需每次确认
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {ALL_TOOLS.map((tool) => (
+                <label
+                  key={tool.name}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-all",
+                    allowedTools.includes(tool.name)
+                      ? "bg-primary/10 border-primary/30"
+                      : "bg-secondary/30 border-border/50 hover:bg-secondary/50"
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={allowedTools.includes(tool.name)}
+                    onChange={() => toggleTool(tool.name)}
+                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30"
+                  />
+                  <span className="text-sm">{tool.label}</span>
+                </label>
+              ))}
+            </div>
           </div>
         </div>
 

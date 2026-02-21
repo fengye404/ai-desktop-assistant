@@ -1,7 +1,22 @@
 import { app } from 'electron';
 import * as path from 'path';
+import * as zlib from 'zlib';
 import Database from 'better-sqlite3';
-import type { Session, SessionMeta, ChatMessage, ModelConfig } from './types';
+import type { Session, SessionMeta, ChatMessage, ModelConfig, MessageItem } from './types';
+
+/**
+ * Compress data using gzip
+ */
+function compressData(data: string): Buffer {
+  return zlib.gzipSync(Buffer.from(data, 'utf-8'));
+}
+
+/**
+ * Decompress gzip data
+ */
+function decompressData(data: Buffer): string {
+  return zlib.gunzipSync(data).toString('utf-8');
+}
 
 /**
  * Generate a unique session ID
@@ -51,17 +66,25 @@ export class SessionStorage {
       )
     `);
 
-    // Create messages table
+    // Create messages table with compressed items support
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         session_id TEXT NOT NULL,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
+        items_data BLOB,
         timestamp INTEGER NOT NULL,
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
       )
     `);
+
+    // Migration: Add items_data column if not exists
+    try {
+      this.db.exec(`ALTER TABLE messages ADD COLUMN items_data BLOB`);
+    } catch {
+      // Column already exists
+    }
 
     // Create config table for storing model configuration
     this.db.exec(`
@@ -187,13 +210,38 @@ export class SessionStorage {
    */
   private getSessionMessages(sessionId: string): ChatMessage[] {
     const stmt = this.db.prepare(`
-      SELECT role, content, timestamp
+      SELECT role, content, items_data, timestamp
       FROM messages
       WHERE session_id = ?
       ORDER BY timestamp ASC
     `);
 
-    return stmt.all(sessionId) as ChatMessage[];
+    const rows = stmt.all(sessionId) as Array<{
+      role: string;
+      content: string;
+      items_data: Buffer | null;
+      timestamp: number;
+    }>;
+
+    return rows.map(row => {
+      const msg: ChatMessage = {
+        role: row.role as 'user' | 'assistant',
+        content: row.content,
+        timestamp: row.timestamp,
+      };
+
+      // Decompress items if exists
+      if (row.items_data) {
+        try {
+          const itemsJson = decompressData(row.items_data);
+          msg.items = JSON.parse(itemsJson) as MessageItem[];
+        } catch (e) {
+          console.error('Failed to decompress message items:', e);
+        }
+      }
+
+      return msg;
+    });
   }
 
   /**
@@ -310,14 +358,32 @@ export class SessionStorage {
       // Clear existing messages
       this.db.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId);
 
-      // Insert new messages
+      // Insert new messages with compressed items
       const insertStmt = this.db.prepare(`
-        INSERT INTO messages (session_id, role, content, timestamp)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO messages (session_id, role, content, items_data, timestamp)
+        VALUES (?, ?, ?, ?, ?)
       `);
 
       for (const msg of messages) {
-        insertStmt.run(sessionId, msg.role, msg.content, msg.timestamp || Date.now());
+        let itemsData: Buffer | null = null;
+        
+        // Compress items if exists
+        if (msg.items && msg.items.length > 0) {
+          try {
+            const itemsJson = JSON.stringify(msg.items);
+            itemsData = compressData(itemsJson);
+          } catch (e) {
+            console.error('Failed to compress message items:', e);
+          }
+        }
+
+        insertStmt.run(
+          sessionId, 
+          msg.role, 
+          msg.content, 
+          itemsData,
+          msg.timestamp || Date.now()
+        );
       }
 
       // Update session timestamp and title

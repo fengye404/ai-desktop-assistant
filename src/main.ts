@@ -89,13 +89,13 @@ function initClaudeService(): void {
         description,
       });
 
-      // Timeout after 30 seconds
+      // Timeout after 5 minutes (give user more time to decide)
       setTimeout(() => {
         if (pendingToolApproval) {
           pendingToolApproval.resolve(false);
           pendingToolApproval = null;
         }
-      }, 30000);
+      }, 300000);
     });
   });
 

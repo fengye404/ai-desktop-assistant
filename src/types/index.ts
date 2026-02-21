@@ -13,11 +13,37 @@ export type Provider = 'anthropic' | 'openai';
 export type MessageRole = 'user' | 'assistant';
 
 /**
+ * Tool call status
+ */
+export type ToolCallStatus = 'pending' | 'running' | 'success' | 'error';
+
+/**
+ * Tool call record for persistence
+ */
+export interface ToolCallRecord {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+  status: ToolCallStatus;
+  output?: string;
+  error?: string;
+}
+
+/**
+ * Message content item - can be text or tool call
+ */
+export type MessageItem = 
+  | { type: 'text'; content: string }
+  | { type: 'tool'; toolCall: ToolCallRecord };
+
+/**
  * Chat message structure for conversation history
+ * Supports both legacy format (content string) and new format (items array)
  */
 export interface ChatMessage {
   role: MessageRole;
-  content: string;
+  content: string;  // For backward compatibility and simple text
+  items?: MessageItem[];  // New format with tool calls
   timestamp?: number;
 }
 

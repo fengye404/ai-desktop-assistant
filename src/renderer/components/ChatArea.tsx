@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { ToolCallList } from './ToolCallBlock';
+import { ToolCallBlock } from './ToolCallBlock';
 import { useSessionStore } from '@/stores/session-store';
 import { useChatStore } from '@/stores/chat-store';
 import { useConfigStore } from '@/stores/config-store';
@@ -20,8 +20,8 @@ const THINKING_MESSAGES = [
 
 export function ChatArea() {
   const { currentMessages } = useSessionStore();
-  const { isLoading, streamingContent, toolCalls, sendMessage, cancelStream, clearHistory, initStreamListener } = useChatStore();
-  const { setSettingsOpen, apiKey } = useConfigStore();
+  const { isLoading, streamItems, sendMessage, cancelStream, clearHistory, initStreamListener, approveToolCall, rejectToolCall } = useChatStore();
+  const { setSettingsOpen, apiKey, allowToolForSession, setAllowAllForSession } = useConfigStore();
   const [input, setInput] = useState('');
   const [thinkingText, setThinkingText] = useState(THINKING_MESSAGES[0]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -38,7 +38,7 @@ export function ChatArea() {
 
   // 动态切换思考文字
   useEffect(() => {
-    if (isLoading && !streamingContent) {
+    if (isLoading && streamItems.length === 0) {
       const interval = setInterval(() => {
         setThinkingText(prev => {
           const currentIndex = THINKING_MESSAGES.indexOf(prev);
@@ -48,13 +48,13 @@ export function ChatArea() {
       }, 2000);
       return () => clearInterval(interval);
     }
-  }, [isLoading, streamingContent]);
+  }, [isLoading, streamItems.length]);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [currentMessages, streamingContent, toolCalls]);
+  }, [currentMessages, streamItems]);
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || isLoading) return;
@@ -110,7 +110,7 @@ export function ChatArea() {
       {/* Messages */}
       <ScrollArea className="flex-1" ref={scrollRef}>
         <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
-          {currentMessages.length === 0 && !streamingContent && !isLoading && (
+          {currentMessages.length === 0 && streamItems.length === 0 && !isLoading && (
             <div className="text-center py-24">
               <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-primary/10">
                 <Sparkles className="h-10 w-10 text-primary" />
@@ -123,44 +123,72 @@ export function ChatArea() {
           )}
 
           {currentMessages.map((msg, i) => (
-            <div
-              key={i}
-              className={cn(
-                'message-enter',
-                msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'
-              )}
-            >
+            msg.role === 'user' ? (
+              // 用户消息
               <div
-                className={cn(
-                  'px-4 py-3 rounded-2xl max-w-[85%]',
-                  msg.role === 'user' 
-                    ? 'user-message rounded-br-md' 
-                    : 'assistant-message rounded-bl-md'
-                )}
+                key={i}
+                className="message-enter flex justify-end"
               >
-                <MarkdownRenderer content={msg.content} />
+                <div className="px-4 py-3 rounded-2xl max-w-[85%] user-message rounded-br-md">
+                  <MarkdownRenderer content={msg.content} />
+                </div>
               </div>
-            </div>
+            ) : msg.items && msg.items.length > 0 ? (
+              // Assistant 消息带有 items（工具调用记录）
+              <div key={i} className="space-y-2">
+                {msg.items.map((item, j) => (
+                  item.type === 'text' ? (
+                    <div key={`${i}-text-${j}`} className="flex justify-start message-enter">
+                      <div className="px-4 py-3 rounded-2xl rounded-bl-md assistant-message max-w-[85%]">
+                        <MarkdownRenderer content={item.content} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div key={`${i}-tool-${item.toolCall.id}`} className="flex justify-start message-enter">
+                      <div className="w-full max-w-[85%]">
+                        <ToolCallBlock toolCall={item.toolCall} />
+                      </div>
+                    </div>
+                  )
+                ))}
+              </div>
+            ) : (
+              // 普通 assistant 消息（旧格式，只有 content）
+              <div
+                key={i}
+                className="message-enter flex justify-start"
+              >
+                <div className="px-4 py-3 rounded-2xl max-w-[85%] assistant-message rounded-bl-md">
+                  <MarkdownRenderer content={msg.content} />
+                </div>
+              </div>
+            )
           ))}
 
-          {streamingContent && (
-            <div className="flex justify-start message-enter">
-              <div className="px-4 py-3 rounded-2xl rounded-bl-md assistant-message max-w-[85%]">
-                <MarkdownRenderer content={streamingContent} />
+          {/* 流式内容和工具调用按顺序穿插展示 */}
+          {streamItems.map((item, i) => (
+            item.type === 'text' ? (
+              <div key={`text-${i}`} className="flex justify-start message-enter">
+                <div className="px-4 py-3 rounded-2xl rounded-bl-md assistant-message max-w-[85%]">
+                  <MarkdownRenderer content={item.content} />
+                </div>
               </div>
-            </div>
-          )}
-
-          {/* 工具调用展示 */}
-          {toolCalls.length > 0 && (
-            <div className="flex justify-start message-enter">
-              <div className="w-full max-w-[85%]">
-                <ToolCallList toolCalls={toolCalls} />
+            ) : (
+              <div key={`tool-${item.toolCall.id}`} className="flex justify-start message-enter">
+                <div className="w-full max-w-[85%]">
+                  <ToolCallBlock 
+                    toolCall={item.toolCall}
+                    onApprove={approveToolCall}
+                    onReject={rejectToolCall}
+                    onAllowForSession={allowToolForSession}
+                    onAllowAllForSession={() => setAllowAllForSession(true)}
+                  />
+                </div>
               </div>
-            </div>
-          )}
+            )
+          ))}
 
-          {isLoading && !streamingContent && toolCalls.length === 0 && (
+          {isLoading && streamItems.length === 0 && (
             <div className="flex justify-start message-enter">
               <div className="px-4 py-3 rounded-2xl rounded-bl-md assistant-message">
                 <div className="flex items-center gap-3">
