@@ -1,9 +1,23 @@
 import { Sidebar } from './components/Sidebar';
 import { ChatArea } from './components/ChatArea';
-import { useEffect, lazy, Suspense, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  lazy,
+  Suspense,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { useConfigStore } from './stores/config-store';
 import { useSessionStore } from './stores/session-store';
-import { electronApiClient } from './services/electron-api-client';
+
+const SIDEBAR_WIDTH_STORAGE_KEY = 'ui.sidebar.width';
+const SIDEBAR_WIDTH_DEFAULT = 320;
+const SIDEBAR_WIDTH_MIN = 260;
+const SIDEBAR_WIDTH_MAX = 520;
+const SIDEBAR_WIDTH_STEP = 12;
 
 const LazySettingsDialog = lazy(() =>
   import('./components/SettingsDialog').then((module) => ({
@@ -11,96 +25,96 @@ const LazySettingsDialog = lazy(() =>
   }))
 );
 
-type BridgeStatus = 'checking' | 'ready' | 'missing';
-
-const BRIDGE_CHECK_INTERVAL_MS = 120;
-const BRIDGE_CHECK_MAX_ATTEMPTS = 30;
-
 export default function App() {
   const loadConfig = useConfigStore((s) => s.loadConfig);
   const isSettingsOpen = useConfigStore((s) => s.isSettingsOpen);
   const loadSessions = useSessionStore((s) => s.loadSessions);
-  const [startupIssue, setStartupIssue] = useState<string | null>(null);
-  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>('checking');
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window === 'undefined') return SIDEBAR_WIDTH_DEFAULT;
+    const saved = Number(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
+    if (!Number.isFinite(saved)) return SIDEBAR_WIDTH_DEFAULT;
+    return Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, saved));
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   useEffect(() => {
-    let disposed = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let attempts = 0;
-
-    const verifyBridge = () => {
-      if (disposed) return;
-
-      if (electronApiClient.isAvailable()) {
-        setBridgeStatus('ready');
-        return;
-      }
-
-      attempts += 1;
-      if (attempts >= BRIDGE_CHECK_MAX_ATTEMPTS) {
-        setBridgeStatus('missing');
-        return;
-      }
-
-      timer = setTimeout(verifyBridge, BRIDGE_CHECK_INTERVAL_MS);
-    };
-
-    verifyBridge();
-
-    return () => {
-      disposed = true;
-      if (timer) {
-        clearTimeout(timer);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    let disposed = false;
-
-    const bootstrap = async () => {
-      const [configResult, sessionResult] = await Promise.allSettled([
-        loadConfig(),
-        loadSessions(),
-      ]);
-
-      if (disposed) return;
-
-      const issues: string[] = [];
-
-      if (configResult.status === 'rejected') {
-        issues.push(`配置加载失败: ${String(configResult.reason)}`);
-      }
-      if (sessionResult.status === 'rejected') {
-        issues.push(`会话加载失败: ${String(sessionResult.reason)}`);
-      }
-
-      setStartupIssue(issues.length > 0 ? issues.join('；') : null);
-    };
-
-    void bootstrap();
-
-    return () => {
-      disposed = true;
-    };
+    void Promise.allSettled([loadConfig(), loadSessions()]);
   }, [loadConfig, loadSessions]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth));
+  }, [sidebarWidth]);
+
+  const handlePointerMove = useCallback((event: PointerEvent) => {
+    const resizeState = resizeRef.current;
+    if (!resizeState) return;
+
+    const nextWidth = resizeState.startWidth + (event.clientX - resizeState.startX);
+    const clampedWidth = Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, nextWidth));
+    setSidebarWidth(clampedWidth);
+  }, []);
+
+  const handlePointerUp = useCallback(() => {
+    setIsResizing(false);
+    resizeRef.current = null;
+    window.removeEventListener('pointermove', handlePointerMove);
+    window.removeEventListener('pointerup', handlePointerUp);
+    window.removeEventListener('pointercancel', handlePointerUp);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }, [handlePointerMove]);
+
+  useEffect(() => {
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [handlePointerMove, handlePointerUp]);
+
+  const handleResizeStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    resizeRef.current = { startX: event.clientX, startWidth: sidebarWidth };
+    setIsResizing(true);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+  }, [handlePointerMove, handlePointerUp, sidebarWidth]);
+
+  const handleResizeKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      setSidebarWidth((prev) => Math.max(SIDEBAR_WIDTH_MIN, prev - SIDEBAR_WIDTH_STEP));
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      setSidebarWidth((prev) => Math.min(SIDEBAR_WIDTH_MAX, prev + SIDEBAR_WIDTH_STEP));
+    }
+  }, []);
+
   return (
-    <div className="app-shell h-screen overflow-hidden p-3">
-      <div className="relative flex h-full w-full overflow-hidden rounded-2xl border border-border/60 bg-background/75 shadow-[0_24px_80px_hsl(225_35%_2%/0.65)] backdrop-blur-xl">
-        <div className="pointer-events-none absolute left-1/2 top-3 z-20 w-[min(760px,calc(100%-2rem))] -translate-x-1/2 space-y-2">
-          {bridgeStatus === 'missing' && (
-            <div className="pointer-events-auto rounded-xl border border-amber-400/35 bg-amber-500/14 px-4 py-2 text-xs text-amber-100 shadow-[0_10px_26px_hsl(45_90%_20%/0.28)]">
-              Renderer 未检测到 Electron bridge（`window.electronAPI`），已进入安全降级模式。
-            </div>
-          )}
-          {startupIssue && (
-            <div className="pointer-events-auto rounded-xl border border-red-400/35 bg-red-500/14 px-4 py-2 text-xs text-red-100 shadow-[0_10px_26px_hsl(0_80%_20%/0.26)]">
-              启动阶段检测到异常：{startupIssue}
-            </div>
-          )}
+    <div className="app-shell h-screen overflow-hidden">
+      <div className="relative flex h-full w-full overflow-hidden bg-background/82 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.03)] backdrop-blur-xl">
+        <Sidebar width={sidebarWidth} />
+        <div
+          role="separator"
+          tabIndex={0}
+          aria-orientation="vertical"
+          aria-label="调整会话面板宽度"
+          aria-valuenow={sidebarWidth}
+          aria-valuemin={SIDEBAR_WIDTH_MIN}
+          aria-valuemax={SIDEBAR_WIDTH_MAX}
+          onPointerDown={handleResizeStart}
+          onKeyDown={handleResizeKeyDown}
+          className={`sidebar-resizer no-drag relative z-20 h-full w-3 shrink-0 cursor-col-resize outline-none ${isResizing ? 'is-resizing' : ''}`}
+        >
+          <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70 shadow-[1px_0_0_hsl(0_0%_100%/0.04)] transition-colors duration-150" />
         </div>
-        <Sidebar />
         <ChatArea />
         {isSettingsOpen && (
           <Suspense fallback={null}>

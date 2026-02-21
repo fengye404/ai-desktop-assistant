@@ -1,9 +1,42 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPC_CHANNELS } from './types';
 import type { ElectronAPI, ModelConfig, StreamChunk, ToolApprovalRequest } from './types';
 
 let streamChunkListener: ((_event: Electron.IpcRendererEvent, chunk: unknown) => void) | null = null;
 let toolApprovalListener: ((_event: Electron.IpcRendererEvent, request: unknown) => void) | null = null;
+
+// NOTE: Keep channel names local in preload to avoid runtime local-module imports
+// under Electron sandboxed preload environment.
+const IPC_CHANNELS = {
+  // Renderer -> Main
+  SEND_MESSAGE: 'send-message',
+  SEND_MESSAGE_STREAM: 'send-message-stream',
+  SET_MODEL_CONFIG: 'set-model-config',
+  TEST_CONNECTION: 'test-connection',
+  ABORT_STREAM: 'abort-stream',
+  ENCRYPT_DATA: 'encrypt-data',
+  DECRYPT_DATA: 'decrypt-data',
+  CLEAR_HISTORY: 'clear-history',
+  GET_HISTORY: 'get-history',
+
+  // Session management
+  SESSION_LIST: 'session-list',
+  SESSION_GET: 'session-get',
+  SESSION_CREATE: 'session-create',
+  SESSION_DELETE: 'session-delete',
+  SESSION_SWITCH: 'session-switch',
+  SESSION_RENAME: 'session-rename',
+
+  // Config management
+  CONFIG_SAVE: 'config-save',
+  CONFIG_LOAD: 'config-load',
+
+  // Tool system
+  TOOL_APPROVAL_REQUEST: 'tool-approval-request',
+  TOOL_APPROVAL_RESPONSE: 'tool-approval-response',
+
+  // Main -> Renderer
+  STREAM_CHUNK: 'stream-chunk',
+} as const;
 
 function replaceListener(
   channel: string,

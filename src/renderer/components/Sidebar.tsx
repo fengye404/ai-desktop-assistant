@@ -4,7 +4,11 @@ import { ScrollArea } from './ui/scroll-area';
 import { useSessionStore } from '@/stores/session-store';
 import { cn } from '@/lib/utils';
 
-export function Sidebar() {
+interface SidebarProps {
+  width: number;
+}
+
+export function Sidebar({ width }: SidebarProps) {
   const sessions = useSessionStore((s) => s.sessions);
   const currentSessionId = useSessionStore((s) => s.currentSessionId);
   const createSession = useSessionStore((s) => s.createSession);
@@ -51,18 +55,21 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-72 min-w-72 border-r border-border/70 sidebar flex flex-col drag-region relative">
-      <div className="pt-10 px-4 pb-4 no-drag border-b border-border/50">
-        <div className="flex items-center justify-between mb-3">
+    <aside
+      className="sidebar relative flex shrink-0 flex-col drag-region"
+      style={{ width, minWidth: width }}
+    >
+      <div className="border-b border-border/45 px-4 pb-4 pt-12 no-drag">
+        <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-[hsl(var(--cool-accent))] shadow-[0_0_12px_hsl(var(--cool-accent)/0.75)]" />
-            <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/75">Workspace</span>
+            <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/72">Workspace</span>
           </div>
-          <Layers2 className="h-3.5 w-3.5 text-muted-foreground/70" />
+          <Layers2 className="h-3.5 w-3.5 text-muted-foreground/65" />
         </div>
         <Button
           onClick={() => createSession()}
-          className="w-full justify-start gap-2.5 h-10 rounded-xl border border-border/70 bg-secondary/55 hover:bg-secondary/85 text-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%/0.05)]"
+          className="h-10 w-full justify-start gap-2.5 rounded-xl border border-border/65 bg-secondary/45 text-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%/0.05)] hover:bg-secondary/80"
           variant="outline"
           aria-label="新建对话"
         >
@@ -72,12 +79,12 @@ export function Sidebar() {
       </div>
 
       <ScrollArea className="flex-1 no-drag">
-        <div className="px-3 pt-3 pb-2">
-          <p className="px-2 text-[11px] uppercase tracking-[0.16em] text-muted-foreground/70 mb-2">Conversations</p>
+        <div className="pb-3 pl-3 pr-5 pt-3">
+          <p className="mb-2 px-2 text-[11px] uppercase tracking-[0.16em] text-muted-foreground/68">Conversations</p>
           <div className="space-y-1.5">
             {sessions.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border/60 text-center text-muted-foreground py-12 text-sm bg-secondary/25">
-                <MessageSquare className="h-8 w-8 mx-auto mb-3 opacity-40" />
+              <div className="rounded-xl border border-dashed border-border/60 bg-secondary/25 py-12 text-center text-sm text-muted-foreground">
+                <MessageSquare className="mx-auto mb-3 h-8 w-8 opacity-40" />
                 <p>暂无对话记录</p>
               </div>
             ) : (
@@ -90,23 +97,34 @@ export function Sidebar() {
                   role="button"
                   aria-current={session.id === currentSessionId}
                   className={cn(
-                    'group px-3 py-3 rounded-xl cursor-pointer transition-all duration-200 session-item border border-transparent',
-                    session.id === currentSessionId && 'active border-primary/30'
+                    'session-item group cursor-pointer overflow-hidden rounded-xl border px-3 py-2.5 transition-all duration-200',
+                    session.id === currentSessionId ? 'active border-primary/35' : 'border-border/60'
                   )}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <div className="relative">
+                    <div className="flex min-w-0 items-center gap-2.5 pr-2 transition-[padding] duration-150 group-hover:pr-14 group-focus-within:pr-14">
                       <MessageSquare className={cn(
-                        'h-4 w-4 shrink-0 transition-colors',
+                        'h-4 w-4 shrink-0 transition-colors duration-200',
                         session.id === currentSessionId ? 'text-primary' : 'text-muted-foreground'
                       )} />
-                      <span className="text-sm truncate font-medium">{session.title}</span>
+                      <div
+                        className={cn(
+                          'session-title-pill min-w-0 flex-1 rounded-md border px-2 py-0.5',
+                          session.id === currentSessionId
+                            ? 'border-primary/42 bg-primary/10'
+                            : 'border-border/65 bg-background/30'
+                        )}
+                      >
+                        <span className="block truncate text-sm font-medium leading-5">
+                          {session.title}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                    <div className="pointer-events-none absolute right-0.5 top-0 flex items-center gap-0.5 opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                        className="h-6 w-6 rounded-md text-muted-foreground hover:bg-secondary/65 hover:text-foreground"
                         onClick={(e) => handleRename(e, session.id)}
                         title="重命名对话"
                         aria-label={`重命名对话：${session.title}`}
@@ -116,7 +134,7 @@ export function Sidebar() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                        className="h-6 w-6 rounded-md text-muted-foreground hover:bg-secondary/65 hover:text-destructive"
                         onClick={(e) => handleDelete(e, session.id)}
                         title="删除对话"
                         aria-label={`删除对话：${session.title}`}
@@ -125,9 +143,9 @@ export function Sidebar() {
                       </Button>
                     </div>
                   </div>
-                  <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                    <span className="truncate max-w-[140px] opacity-75">{session.preview || '无消息'}</span>
-                    <span className="shrink-0 rounded-md bg-background/40 border border-border/40 px-1.5 py-0.5 opacity-80">
+                  <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground/88">
+                    <span className="min-w-0 flex-1 truncate opacity-75">{session.preview || '无消息'}</span>
+                    <span className="shrink-0 rounded-md border border-border/45 bg-background/35 px-1.5 py-0.5 opacity-80">
                       {formatTime(session.updatedAt)}
                     </span>
                   </div>
@@ -138,8 +156,8 @@ export function Sidebar() {
         </div>
       </ScrollArea>
 
-      <div className="p-3 border-t border-border/40 no-drag">
-        <p className="text-[11px] text-muted-foreground/55 text-center tracking-[0.08em] uppercase">
+      <div className="border-t border-border/40 p-3 no-drag">
+        <p className="text-center text-[11px] uppercase tracking-[0.08em] text-muted-foreground/55">
           AI Desktop Assistant
         </p>
       </div>

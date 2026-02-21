@@ -172,8 +172,8 @@ export function ChatArea() {
   ];
 
   return (
-    <main className="flex-1 flex flex-col chat-canvas relative">
-      <div className="h-14 border-b border-border/60 flex items-center justify-between px-5 drag-region bg-background/55 backdrop-blur-xl">
+    <main className="chat-canvas relative flex flex-1 flex-col">
+      <div className="drag-region flex h-14 items-center justify-between border-b border-border/55 bg-background/55 px-5 backdrop-blur-xl">
         <div className="flex items-center gap-2 no-drag">
           <div className="w-8 h-8 rounded-lg bg-[linear-gradient(135deg,hsl(var(--primary)/0.3),hsl(var(--cool-accent)/0.28))] border border-border/60 flex items-center justify-center shadow-[0_6px_20px_hsl(var(--cool-accent)/0.2)]">
             <Sparkles className="h-4 w-4 text-primary" />
@@ -371,7 +371,7 @@ export function ChatArea() {
         </div>
       </ScrollArea>
 
-      <div className="border-t border-border/60 p-4 bg-background/45 backdrop-blur-xl">
+      <div className="border-t border-border/55 bg-background/45 p-4 backdrop-blur-xl">
         <div className="max-w-4xl mx-auto">
           <div className="flex gap-3 items-end composer-shell rounded-xl border border-border/60 p-2.5 transition-all">
             <Textarea
