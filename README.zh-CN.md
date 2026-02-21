@@ -8,16 +8,13 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-3178C6?logo=typescript&logoColor=white)
 ![许可证](https://img.shields.io/badge/license-MIT-22c55e)
 ![平台](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-6b7280)
+![GitHub Stars](https://img.shields.io/github/stars/fengye404/ai-desktop-assistant?style=flat-square)
+![GitHub Forks](https://img.shields.io/github/forks/fengye404/ai-desktop-assistant?style=flat-square)
+![GitHub Issues](https://img.shields.io/github/issues/fengye404/ai-desktop-assistant?style=flat-square)
+![GitHub Release](https://img.shields.io/github/v/release/fengye404/ai-desktop-assistant?style=flat-square)
+![最后提交](https://img.shields.io/github/last-commit/fengye404/ai-desktop-assistant?style=flat-square)
 
 基于 Electron + React + TypeScript 构建的桌面 AI 助手。
-
-## 标签
-
-![AI 助手](https://img.shields.io/badge/-AI%20Assistant-111827?style=flat-square)
-![桌面应用](https://img.shields.io/badge/-Desktop%20App-111827?style=flat-square)
-![Agent 工具](https://img.shields.io/badge/-Agent%20Tools-111827?style=flat-square)
-![流式输出](https://img.shields.io/badge/-Streaming-111827?style=flat-square)
-![多模型提供商](https://img.shields.io/badge/-Multi%20Provider-111827?style=flat-square)
 
 ## 核心特性
 

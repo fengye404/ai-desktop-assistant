@@ -8,16 +8,13 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-3178C6?logo=typescript&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-22c55e)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-6b7280)
+![GitHub Stars](https://img.shields.io/github/stars/fengye404/ai-desktop-assistant?style=flat-square)
+![GitHub Forks](https://img.shields.io/github/forks/fengye404/ai-desktop-assistant?style=flat-square)
+![GitHub Issues](https://img.shields.io/github/issues/fengye404/ai-desktop-assistant?style=flat-square)
+![GitHub Release](https://img.shields.io/github/v/release/fengye404/ai-desktop-assistant?style=flat-square)
+![Last Commit](https://img.shields.io/github/last-commit/fengye404/ai-desktop-assistant?style=flat-square)
 
 An AI desktop assistant built with Electron + React + TypeScript.
-
-## Tags
-
-![AI Assistant](https://img.shields.io/badge/-AI%20Assistant-111827?style=flat-square)
-![Desktop App](https://img.shields.io/badge/-Desktop%20App-111827?style=flat-square)
-![Agent Tools](https://img.shields.io/badge/-Agent%20Tools-111827?style=flat-square)
-![Streaming](https://img.shields.io/badge/-Streaming-111827?style=flat-square)
-![Multi Provider](https://img.shields.io/badge/-Multi%20Provider-111827?style=flat-square)
 
 ## Highlights
 
