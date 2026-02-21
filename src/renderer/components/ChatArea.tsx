@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { ToolCallList } from './ToolCallBlock';
 import { useSessionStore } from '@/stores/session-store';
 import { useChatStore } from '@/stores/chat-store';
 import { useConfigStore } from '@/stores/config-store';
@@ -19,7 +20,7 @@ const THINKING_MESSAGES = [
 
 export function ChatArea() {
   const { currentMessages } = useSessionStore();
-  const { isLoading, streamingContent, sendMessage, cancelStream, clearHistory, initStreamListener } = useChatStore();
+  const { isLoading, streamingContent, toolCalls, sendMessage, cancelStream, clearHistory, initStreamListener } = useChatStore();
   const { setSettingsOpen, apiKey } = useConfigStore();
   const [input, setInput] = useState('');
   const [thinkingText, setThinkingText] = useState(THINKING_MESSAGES[0]);
@@ -53,7 +54,7 @@ export function ChatArea() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [currentMessages, streamingContent]);
+  }, [currentMessages, streamingContent, toolCalls]);
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || isLoading) return;
@@ -150,7 +151,16 @@ export function ChatArea() {
             </div>
           )}
 
-          {isLoading && !streamingContent && (
+          {/* 工具调用展示 */}
+          {toolCalls.length > 0 && (
+            <div className="flex justify-start message-enter">
+              <div className="w-full max-w-[85%]">
+                <ToolCallList toolCalls={toolCalls} />
+              </div>
+            </div>
+          )}
+
+          {isLoading && !streamingContent && toolCalls.length === 0 && (
             <div className="flex justify-start message-enter">
               <div className="px-4 py-3 rounded-2xl rounded-bl-md assistant-message">
                 <div className="flex items-center gap-3">

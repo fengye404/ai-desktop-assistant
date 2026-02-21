@@ -24,10 +24,11 @@
 | 多 API 提供商 | ✅ 已实现 | ✅ |
 | 文件读取工具 | ✅ 已实现 | ✅ |
 | 文件写入工具 | ✅ 已实现 | ✅ |
-| 文件编辑工具 | ❌ | ✅ |
+| 文件编辑工具 | ✅ 已实现 | ✅ |
 | Bash 执行工具 | ✅ 已实现 | ✅ |
 | Glob 搜索 | ✅ 已实现 | ✅ |
-| Grep 搜索 | ❌ | ✅ |
+| Grep 搜索 | ✅ 已实现 | ✅ |
+| WebFetch | ✅ 已实现 | ✅ |
 | 工具权限系统 | ✅ 已实现 | ✅ |
 | 工具循环 (Agentic Loop) | ✅ 已实现 | ✅ |
 | Git 集成 | ❌ | ✅ |
@@ -44,19 +45,19 @@
 
 ## 功能模块详细规划
 
-### 阶段一: 工具系统 (v1.4) - 部分已实现 ✅
+### 阶段一: 工具系统 (v1.4) - ✅ 已完成
 
 #### 1.1 内置工具
 
 | 工具 | 功能 | 权限 | 优先级 | 状态 |
 |------|------|------|--------|------|
-| `Read` | 读取文件内容，支持行号、图片、PDF | allow | P0 | ✅ 已实现 |
+| `Read` | 读取文件内容，支持行号范围 | allow | P0 | ✅ 已实现 |
 | `Write` | 创建或覆盖整个文件 | ask | P0 | ✅ 已实现 |
-| `Edit` | 精确字符串替换编辑 | ask | P0 | ❌ 待开发 |
+| `Edit` | 精确字符串替换编辑 | ask | P0 | ✅ 已实现 |
 | `Glob` | 按模式搜索文件 (如 `**/*.ts`) | allow | P0 | ✅ 已实现 |
-| `Grep` | 正则表达式搜索文件内容 | allow | P0 | ❌ 待开发 |
+| `Grep` | 正则表达式搜索文件内容 | allow | P0 | ✅ 已实现 |
 | `Bash` | 执行 Shell 命令 | ask | P0 | ✅ 已实现 |
-| `WebFetch` | 获取网页内容 | allow | P1 | ❌ 待开发 |
+| `WebFetch` | 获取网页内容 | allow | P1 | ✅ 已实现 |
 | `WebSearch` | 网络搜索 | allow | P2 | ❌ 待开发 |
 | `ListDir` | 列出目录内容 | allow | - | ✅ 已实现 (额外) |
 | `SystemInfo` | 获取系统信息 | allow | - | ✅ 已实现 (额外) |
@@ -599,7 +600,7 @@ Claude 支持 200K token 的上下文窗口，可以理解整个代码库结构�
 
 | 版本 | 功能 | 优先级 | 状态 |
 |------|------|--------|------|
-| v1.4 | 工具系统 (Read/Write/Edit/Bash) | P0 | ⏳ 部分完成 |
+| v1.4 | 工具系统 (Read/Write/Edit/Bash/Grep/WebFetch) | P0 | ✅ 已完成 |
 | v1.4.5 | 检查点与恢复 | P0 | ❌ 未开始 |
 | v1.5 | @ 文件引用 + 斜杠命令 | P0 | ❌ 未开始 |
 | v1.6 | Git 集成 | P1 | ❌ 未开始 |
@@ -614,8 +615,19 @@ Claude 支持 200K token 的上下文窗口，可以理解整个代码库结构�
 
 ## 技术参考
 
-- [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-typescript)
-- [Claude Code](https://github.com/anthropics/claude-code)
+### Claude Agent SDK 官方文档
+
+| 文档 | 链接 |
+|------|------|
+| SDK 概览 | https://platform.claude.com/docs/zh-CN/agent-sdk/overview |
+| 快速开始 | https://platform.claude.com/docs/zh-CN/agent-sdk/quickstart |
+| TypeScript SDK | https://platform.claude.com/docs/zh-CN/agent-sdk/typescript |
+| Python SDK | https://platform.claude.com/docs/zh-CN/agent-sdk/python |
+
+> **Note**: 如果中文文档无法访问，可将 URL 中的 `zh-CN` 替换为 `en` 使用英文文档。
+
+### 其他参考
+
 - [MCP 规范](https://modelcontextprotocol.io)
 - [Anthropic API](https://docs.anthropic.com)
 

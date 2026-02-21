@@ -150,7 +150,21 @@ Base URL: https://open.bigmodel.cn/api/paas/v4
 
 ## Documentation
 
-See `docs/overview.md` for detailed architecture documentation.
+- [Architecture Overview](docs/overview.md) - 详细架构文档
+- [Roadmap](docs/roadmap.md) - 功能路线图
+
+### Claude Agent SDK 官方文档
+
+本项目参考 Claude Agent SDK 进行功能规划和设计：
+
+| 文档 | 链接 |
+|------|------|
+| SDK 概览 | https://platform.claude.com/docs/zh-CN/agent-sdk/overview |
+| 快速开始 | https://platform.claude.com/docs/zh-CN/agent-sdk/quickstart |
+| TypeScript SDK | https://platform.claude.com/docs/zh-CN/agent-sdk/typescript |
+| Python SDK | https://platform.claude.com/docs/zh-CN/agent-sdk/python |
+
+> **Note**: 如果中文文档无法访问，可将 URL 中的 `zh-CN` 替换为 `en` 使用英文文档。
 
 ## License
 

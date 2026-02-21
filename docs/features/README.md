@@ -6,14 +6,24 @@
 
 | 功能 | 文档 | 说明 |
 |------|------|------|
+| 工具系统 | [tool-system.md](./tool-system.md) | Agentic Loop、内置工具、权限控制 |
 | 对话记忆 | [conversation-memory.md](./conversation-memory.md) | 多轮对话上下文记忆 |
 | 历史会话 | [session-history.md](./session-history.md) | 侧边栏会话管理 |
 | 流式响应 | [streaming.md](./streaming.md) | 实时显示 AI 生成内容 |
-| 多 API 支持 | [multi-provider.md](./multi-provider.md) | 支持多种 AI 服务商 |
 
 ## 核心功能概览
 
-### 1. 对话记忆 (v1.2.0 新增)
+### 1. 工具系统 (v1.4.0 新增)
+
+参考 Claude Agent SDK 设计的 Agentic Loop 架构：
+
+- **9 个内置工具**：读写文件、编辑、搜索、命令执行、网页获取等
+- **三级权限控制**：allow（自动）、ask（弹窗确认）、deny（禁止）
+- **循环调用**：AI 可连续调用多个工具完成复杂任务（最多 10 次）
+
+详见：[工具系统](./tool-system.md)
+
+### 2. 对话记忆 (v1.2.0 新增)
 
 支持多轮对话，AI 能够记住之前的对话内容：
 
@@ -24,7 +34,7 @@
 
 详见：[对话记忆功能](./conversation-memory.md)
 
-### 2. 历史会话记录 (v1.3.0 新增)
+### 3. 历史会话记录 (v1.3.0 新增)
 
 侧边栏会话管理，支持多会话切换和持久化存储：
 
@@ -36,7 +46,7 @@
 
 详见：[历史会话记录](./session-history.md)
 
-### 3. 双 API 格式支持
+### 4. 双 API 格式支持
 
 - **Claude API**：Anthropic 官方 API
 - **OpenAI 兼容 API**：支持所有 OpenAI 兼容服务
@@ -47,7 +57,7 @@
   - 智谱 AI
   - 等等...
 
-### 4. 流式响应 (v1.3.1 优化)
+### 5. 流式响应 (v1.3.1 优化)
 
 - 使用 AsyncGenerator 实现
 - 实时显示生成内容
@@ -56,7 +66,7 @@
 
 详见：[流式响应](./streaming.md)
 
-### 5. 安全存储 (v1.3.1 改进)
+### 6. 安全存储 (v1.3.1 改进)
 
 - API Key 使用系统级加密存储
 - v1.3.1：配置持久化到 SQLite，重启不丢失
@@ -64,7 +74,7 @@
 - Windows: safeStorage (DPAPI)
 - Linux: safeStorage (Secret Service)
 
-### 6. 现代 UI
+### 7. 现代 UI
 
 - Glassmorphism 设计风格
 - 响应式布局

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { useSessionStore } from './session-store';
+import type { ToolCall } from '../components/ToolCallBlock';
 
 interface ToolUse {
   id: string;
@@ -22,6 +23,7 @@ interface ToolApprovalRequest {
 interface ChatState {
   isLoading: boolean;
   streamingContent: string;
+  toolCalls: ToolCall[];
   toolApprovalRequest: ToolApprovalRequest | null;
 
   sendMessage: (message: string) => Promise<void>;
@@ -35,6 +37,7 @@ interface ChatState {
 export const useChatStore = create<ChatState>((set, get) => ({
   isLoading: false,
   streamingContent: '',
+  toolCalls: [],
   toolApprovalRequest: null,
 
   sendMessage: async (message: string) => {
@@ -46,19 +49,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
       { role: 'user', content: message, timestamp: Date.now() }
     ]);
 
-    set({ isLoading: true, streamingContent: '' });
+    set({ isLoading: true, streamingContent: '', toolCalls: [] });
 
     try {
       await window.electronAPI.sendMessageStream(message);
     } catch (error) {
       console.error('[chat-store] Send message error:', error);
-      set({ isLoading: false, streamingContent: '' });
+      set({ isLoading: false, streamingContent: '', toolCalls: [] });
     }
   },
 
   cancelStream: async () => {
     await window.electronAPI.abortStream();
-    set({ isLoading: false, streamingContent: '' });
+    set({ isLoading: false, streamingContent: '', toolCalls: [] });
   },
 
   clearHistory: async () => {
@@ -90,7 +93,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }
         
         // 清空状态
-        set({ isLoading: false, streamingContent: '' });
+        set({ isLoading: false, streamingContent: '', toolCalls: [] });
         
         // 后台刷新确保数据一致性
         sessionStore.refreshSessions();
@@ -100,6 +103,34 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (chunk.type === 'text') {
         // 每次都获取最新的 streamingContent
         set((state) => ({ streamingContent: state.streamingContent + chunk.content }));
+      } else if (chunk.type === 'tool_use' && chunk.toolUse) {
+        // 工具开始调用
+        const newToolCall: ToolCall = {
+          id: chunk.toolUse.id,
+          name: chunk.toolUse.name,
+          input: chunk.toolUse.input,
+          status: 'running',
+        };
+        set((state) => ({ toolCalls: [...state.toolCalls, newToolCall] }));
+      } else if (chunk.type === 'tool_result') {
+        // 工具执行完成，更新状态
+        const isError = chunk.content.includes('failed');
+        set((state) => {
+          const updatedToolCalls = [...state.toolCalls];
+          // 更新最后一个 running 状态的工具
+          for (let i = updatedToolCalls.length - 1; i >= 0; i--) {
+            if (updatedToolCalls[i].status === 'running') {
+              updatedToolCalls[i] = {
+                ...updatedToolCalls[i],
+                status: isError ? 'error' : 'success',
+                output: isError ? undefined : chunk.content,
+                error: isError ? chunk.content : undefined,
+              };
+              break;
+            }
+          }
+          return { toolCalls: updatedToolCalls };
+        });
       } else if (chunk.type === 'error') {
         console.error('[chat-store] Stream error:', chunk.content);
         // 显示错误信息给用户
@@ -109,7 +140,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           ...currentMessages,
           { role: 'assistant', content: `❌ ${chunk.content}`, timestamp: Date.now() }
         ]);
-        set({ isLoading: false, streamingContent: '' });
+        set({ isLoading: false, streamingContent: '', toolCalls: [] });
       }
     });
 
