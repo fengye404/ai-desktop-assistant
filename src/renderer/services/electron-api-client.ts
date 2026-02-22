@@ -1,5 +1,6 @@
 import type {
   ChatMessage,
+  ChatImageAttachment,
   CompactHistoryResult,
   ConnectionTestResult,
   ElectronAPI,
@@ -9,6 +10,7 @@ import type {
   McpToolInfo,
   ModelConfig,
   PathAutocompleteItem,
+  RewindHistoryResult,
   Session,
   SessionMeta,
   StreamChunk,
@@ -41,14 +43,14 @@ function rejectUnavailable<T>(method: string): Promise<T> {
 export const electronApiClient = {
   isAvailable: () => hasApiBridge(),
 
-  sendMessage: (message: string, systemPrompt?: string) => {
+  sendMessage: (message: string, systemPrompt?: string, attachments?: ChatImageAttachment[]) => {
     const api = getApiOrNull();
-    return api ? api.sendMessage(message, systemPrompt) : rejectUnavailable('sendMessage');
+    return api ? api.sendMessage(message, systemPrompt, attachments) : rejectUnavailable('sendMessage');
   },
 
-  sendMessageStream: (message: string, systemPrompt?: string) => {
+  sendMessageStream: (message: string, systemPrompt?: string, attachments?: ChatImageAttachment[]) => {
     const api = getApiOrNull();
-    return api ? api.sendMessageStream(message, systemPrompt) : rejectUnavailable('sendMessageStream');
+    return api ? api.sendMessageStream(message, systemPrompt, attachments) : rejectUnavailable('sendMessageStream');
   },
 
   onStreamChunk: (callback: (chunk: StreamChunk) => void) => {
@@ -112,6 +114,11 @@ export const electronApiClient = {
   compactHistory: (): Promise<CompactHistoryResult> => {
     const api = getApiOrNull();
     return api ? api.compactHistory() : rejectUnavailable('compactHistory');
+  },
+
+  rewindLastTurn: (): Promise<RewindHistoryResult> => {
+    const api = getApiOrNull();
+    return api ? api.rewindLastTurn() : rejectUnavailable('rewindLastTurn');
   },
 
   autocompletePaths: (partialPath: string): Promise<PathAutocompleteItem[]> => {

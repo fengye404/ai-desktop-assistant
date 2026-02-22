@@ -10,6 +10,7 @@ directories:
 
 files:
   - dist/**/*
+  - public/branding/**/*
   - package.json
   - node_modules/better-sqlite3/**/*
 
@@ -26,6 +27,7 @@ mac:
   category: public.app-category.productivity
   hardenedRuntime: true
   gatekeeperAssess: false
+  icon: public/branding/icon.icns
   target:
     - target: dmg
       arch:
@@ -47,6 +49,7 @@ dmg:
 
 # Windows Configuration
 win:
+  icon: public/branding/icon.ico
   target:
     - target: nsis
       arch:
@@ -63,6 +66,7 @@ nsis:
 
 # Linux Configuration (optional)
 linux:
+  icon: public/branding
   target:
     - AppImage
     - deb

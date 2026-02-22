@@ -39,12 +39,24 @@ export type MessageItem =
   | { type: 'tool'; toolCall: ToolCallRecord };
 
 /**
+ * Image attachment for user messages
+ */
+export interface ChatImageAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  dataUrl: string;
+}
+
+/**
  * Chat message structure for conversation history
  * Supports both legacy format (content string) and new format (items array)
  */
 export interface ChatMessage {
   role: MessageRole;
   content: string;  // For backward compatibility and simple text
+  attachments?: ChatImageAttachment[];
   items?: MessageItem[];  // New format with tool calls
   timestamp?: number;
 }
@@ -209,6 +221,17 @@ export interface CompactHistoryResult {
 }
 
 /**
+ * History rewind result
+ */
+export interface RewindHistoryResult {
+  success: boolean;
+  skipped: boolean;
+  reason?: string;
+  removedMessageCount: number;
+  remainingMessageCount: number;
+}
+
+/**
  * Path autocomplete item for @ reference input
  */
 export interface PathAutocompleteItem {
@@ -289,6 +312,7 @@ export const IPC_CHANNELS = {
   CLEAR_HISTORY: 'clear-history',
   GET_HISTORY: 'get-history',
   COMPACT_HISTORY: 'compact-history',
+  REWIND_LAST_TURN: 'rewind-last-turn',
   AUTOCOMPLETE_PATHS: 'autocomplete-paths',
 
   // Session management
@@ -322,8 +346,12 @@ export const IPC_CHANNELS = {
  * Electron API exposed via contextBridge
  */
 export interface ElectronAPI {
-  sendMessage: (message: string, systemPrompt?: string) => Promise<string>;
-  sendMessageStream: (message: string, systemPrompt?: string) => Promise<boolean>;
+  sendMessage: (message: string, systemPrompt?: string, attachments?: ChatImageAttachment[]) => Promise<string>;
+  sendMessageStream: (
+    message: string,
+    systemPrompt?: string,
+    attachments?: ChatImageAttachment[],
+  ) => Promise<boolean>;
   onStreamChunk: (callback: (chunk: StreamChunk) => void) => void;
   removeStreamListener: () => void;
   setModelConfig: (config: Partial<ModelConfig>) => Promise<boolean>;
@@ -334,6 +362,7 @@ export interface ElectronAPI {
   clearHistory: () => Promise<void>;
   getHistory: () => Promise<ChatMessage[]>;
   compactHistory: () => Promise<CompactHistoryResult>;
+  rewindLastTurn: () => Promise<RewindHistoryResult>;
   autocompletePaths: (partialPath: string) => Promise<PathAutocompleteItem[]>;
 
   // Session management

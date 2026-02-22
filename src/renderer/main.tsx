@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import './styles/globals.css';
+import { BRANDING } from '../shared/branding';
 
 function installGlobalRuntimeHandlers() {
   window.addEventListener('error', (event) => {
@@ -25,7 +26,21 @@ function renderFatalBootstrapError(message: string) {
   `;
 }
 
+function applyBrandingMetadata(): void {
+  document.title = BRANDING.productName;
+
+  const faviconHref = BRANDING.rendererIconUrl;
+  let faviconLink = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  if (!faviconLink) {
+    faviconLink = document.createElement('link');
+    faviconLink.rel = 'icon';
+    document.head.appendChild(faviconLink);
+  }
+  faviconLink.href = faviconHref;
+}
+
 installGlobalRuntimeHandlers();
+applyBrandingMetadata();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

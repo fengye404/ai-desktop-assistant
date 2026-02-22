@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
+  ChatImageAttachment,
   CompactHistoryResult,
   ElectronAPI,
   McpRefreshResult,
@@ -8,6 +9,7 @@ import type {
   McpToolInfo,
   ModelConfig,
   PathAutocompleteItem,
+  RewindHistoryResult,
   StreamChunk,
   ToolApprovalRequest,
 } from './types';
@@ -29,6 +31,7 @@ const IPC_CHANNELS = {
   CLEAR_HISTORY: 'clear-history',
   GET_HISTORY: 'get-history',
   COMPACT_HISTORY: 'compact-history',
+  REWIND_LAST_TURN: 'rewind-last-turn',
   AUTOCOMPLETE_PATHS: 'autocomplete-paths',
 
   // Session management
@@ -71,11 +74,11 @@ function replaceListener(
 }
 
 const electronAPI: ElectronAPI = {
-  sendMessage: (message: string, systemPrompt?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.SEND_MESSAGE, message, systemPrompt),
+  sendMessage: (message: string, systemPrompt?: string, attachments?: ChatImageAttachment[]) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEND_MESSAGE, message, systemPrompt, attachments),
 
-  sendMessageStream: (message: string, systemPrompt?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.SEND_MESSAGE_STREAM, message, systemPrompt),
+  sendMessageStream: (message: string, systemPrompt?: string, attachments?: ChatImageAttachment[]) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SEND_MESSAGE_STREAM, message, systemPrompt, attachments),
 
   onStreamChunk: (callback: (chunk: StreamChunk) => void) => {
     streamChunkListener = replaceListener(
@@ -114,6 +117,9 @@ const electronAPI: ElectronAPI = {
 
   compactHistory: () =>
     ipcRenderer.invoke(IPC_CHANNELS.COMPACT_HISTORY) as Promise<CompactHistoryResult>,
+
+  rewindLastTurn: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.REWIND_LAST_TURN) as Promise<RewindHistoryResult>,
 
   autocompletePaths: (partialPath: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.AUTOCOMPLETE_PATHS, partialPath) as Promise<PathAutocompleteItem[]>,

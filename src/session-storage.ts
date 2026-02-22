@@ -6,6 +6,7 @@ import type {
   Session,
   SessionMeta,
   ChatMessage,
+  ChatImageAttachment,
   ModelConfig,
   MessageItem,
   McpServersConfig,
@@ -39,6 +40,9 @@ function generateTitle(messages: ChatMessage[]): string {
   const firstUserMessage = messages.find((m) => m.role === 'user');
   if (firstUserMessage) {
     const content = firstUserMessage.content.trim();
+    if (!content && firstUserMessage.attachments && firstUserMessage.attachments.length > 0) {
+      return '图片对话';
+    }
     return content.length > 30 ? content.substring(0, 30) + '...' : content;
   }
   return '新对话';
@@ -80,6 +84,7 @@ export class SessionStorage {
         session_id TEXT NOT NULL,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
+        attachments_data BLOB,
         items_data BLOB,
         timestamp INTEGER NOT NULL,
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
@@ -89,6 +94,13 @@ export class SessionStorage {
     // Migration: Add items_data column if not exists
     try {
       this.db.exec('ALTER TABLE messages ADD COLUMN items_data BLOB');
+    } catch {
+      // Column already exists
+    }
+
+    // Migration: Add attachments_data column if not exists
+    try {
+      this.db.exec('ALTER TABLE messages ADD COLUMN attachments_data BLOB');
     } catch {
       // Column already exists
     }
@@ -255,7 +267,7 @@ export class SessionStorage {
    */
   private getSessionMessages(sessionId: string): ChatMessage[] {
     const stmt = this.db.prepare(`
-      SELECT role, content, items_data, timestamp
+      SELECT role, content, attachments_data, items_data, timestamp
       FROM messages
       WHERE session_id = ?
       ORDER BY timestamp ASC
@@ -264,6 +276,7 @@ export class SessionStorage {
     const rows = stmt.all(sessionId) as Array<{
       role: string;
       content: string;
+      attachments_data: Buffer | null;
       items_data: Buffer | null;
       timestamp: number;
     }>;
@@ -274,6 +287,15 @@ export class SessionStorage {
         content: row.content,
         timestamp: row.timestamp,
       };
+
+      if (row.attachments_data) {
+        try {
+          const attachmentsJson = decompressData(row.attachments_data);
+          msg.attachments = JSON.parse(attachmentsJson) as ChatImageAttachment[];
+        } catch (e) {
+          console.error('Failed to decompress message attachments:', e);
+        }
+      }
 
       // Decompress items if exists
       if (row.items_data) {
@@ -405,13 +427,24 @@ export class SessionStorage {
 
       // Insert new messages with compressed items
       const insertStmt = this.db.prepare(`
-        INSERT INTO messages (session_id, role, content, items_data, timestamp)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO messages (session_id, role, content, attachments_data, items_data, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
       `);
 
       for (const msg of messages) {
+        let attachmentsData: Buffer | null = null;
         let itemsData: Buffer | null = null;
-        
+
+        // Compress attachments if exists
+        if (msg.attachments && msg.attachments.length > 0) {
+          try {
+            const attachmentsJson = JSON.stringify(msg.attachments);
+            attachmentsData = compressData(attachmentsJson);
+          } catch (e) {
+            console.error('Failed to compress message attachments:', e);
+          }
+        }
+
         // Compress items if exists
         if (msg.items && msg.items.length > 0) {
           try {
@@ -426,6 +459,7 @@ export class SessionStorage {
           sessionId, 
           msg.role, 
           msg.content, 
+          attachmentsData,
           itemsData,
           msg.timestamp || Date.now()
         );

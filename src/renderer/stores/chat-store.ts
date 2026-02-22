@@ -3,7 +3,12 @@ import { electronApiClient } from '@/services/electron-api-client';
 import { formatSlashCommandHelp, parseSlashCommand } from '@/lib/slash-commands';
 import { useConfigStore } from './config-store';
 import { useSessionStore } from './session-store';
-import type { MessageItem, ToolCallRecord } from '../../types';
+import type {
+  ChatImageAttachment,
+  MessageItem,
+  RewindHistoryResult,
+  ToolCallRecord,
+} from '../../types';
 import { createChatStreamListener, type ChatStreamListener } from './chat-stream-listener';
 import {
   applyApproveToolCallToStreamState,
@@ -22,9 +27,10 @@ interface ChatState {
   pendingApprovalId: string | null;
   isWaitingResponse: boolean;
 
-  sendMessage: (message: string) => Promise<void>;
+  sendMessage: (message: string, attachments?: ChatImageAttachment[]) => Promise<void>;
   cancelStream: () => Promise<void>;
   clearHistory: () => Promise<void>;
+  rewindLastTurn: () => Promise<RewindHistoryResult>;
   approveToolCall: (id: string) => void;
   rejectToolCall: (id: string) => void;
   initStreamListener: () => void;
@@ -155,9 +161,10 @@ export const useChatStore = create<ChatState>((set, get) => {
     isLoading: false,
     ...createEmptyStreamState(),
 
-    sendMessage: async (message: string) => {
+    sendMessage: async (message: string, attachments?: ChatImageAttachment[]) => {
       const trimmedMessage = message.trim();
-      if (!trimmedMessage) {
+      const safeAttachments = attachments && attachments.length > 0 ? attachments : undefined;
+      if (!trimmedMessage && !safeAttachments) {
         return;
       }
 
@@ -169,13 +176,13 @@ export const useChatStore = create<ChatState>((set, get) => {
       const currentMessages = sessionStore.currentMessages;
       sessionStore.setCurrentMessages([
         ...currentMessages,
-        { role: 'user', content: trimmedMessage, timestamp: Date.now() },
+        { role: 'user', content: trimmedMessage, attachments: safeAttachments, timestamp: Date.now() },
       ]);
 
       set({ isLoading: true, ...createEmptyStreamState() });
 
       try {
-        await electronApiClient.sendMessageStream(trimmedMessage);
+        await electronApiClient.sendMessageStream(trimmedMessage, undefined, safeAttachments);
       } catch (error) {
         console.error('[chat-store] Send message error:', error);
         set({ isLoading: false, ...createEmptyStreamState() });
@@ -194,6 +201,20 @@ export const useChatStore = create<ChatState>((set, get) => {
       streamListener?.dispose();
       set(createEmptyStreamState());
       await useSessionStore.getState().refreshSessions();
+    },
+
+    rewindLastTurn: async () => {
+      const result = await electronApiClient.rewindLastTurn();
+
+      const history = await electronApiClient.getHistory();
+      const sessionStore = useSessionStore.getState();
+      sessionStore.setCurrentMessages(history);
+
+      streamListener?.dispose();
+      set({ isLoading: false, ...createEmptyStreamState() });
+      await sessionStore.refreshSessions();
+
+      return result;
     },
 
     approveToolCall: (id: string) => {

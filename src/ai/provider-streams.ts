@@ -33,6 +33,120 @@ interface OpenAIStreamOptions {
   systemPrompt?: string;
 }
 
+type SupportedAnthropicImageMimeType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
+function parseBase64DataUrl(dataUrl: string): { mimeType: string; base64: string } | null {
+  if (!dataUrl.startsWith('data:')) {
+    return null;
+  }
+
+  const matched = /^data:([^;,]+);base64,(.+)$/.exec(dataUrl);
+  if (!matched) {
+    return null;
+  }
+
+  const mimeType = matched[1]?.trim().toLowerCase();
+  const base64 = matched[2]?.trim();
+  if (!mimeType || !base64) {
+    return null;
+  }
+
+  return { mimeType, base64 };
+}
+
+function normalizeAnthropicImageMimeType(mimeType: string): SupportedAnthropicImageMimeType | null {
+  if (mimeType === 'image/jpg') {
+    return 'image/jpeg';
+  }
+
+  if (
+    mimeType === 'image/jpeg' ||
+    mimeType === 'image/png' ||
+    mimeType === 'image/gif' ||
+    mimeType === 'image/webp'
+  ) {
+    return mimeType;
+  }
+
+  return null;
+}
+
+function toAnthropicMessageContent(message: ChatMessage): Anthropic.MessageParam['content'] {
+  const attachments = message.role === 'user' ? (message.attachments ?? []) : [];
+  if (attachments.length === 0) {
+    return message.content;
+  }
+
+  const blocks: Array<
+    | { type: 'text'; text: string }
+    | { type: 'image'; source: { type: 'base64'; media_type: SupportedAnthropicImageMimeType; data: string } }
+  > = [];
+
+  if (message.content.trim()) {
+    blocks.push({ type: 'text', text: message.content });
+  }
+
+  for (const attachment of attachments) {
+    const parsed = parseBase64DataUrl(attachment.dataUrl);
+    if (!parsed) {
+      continue;
+    }
+    const mediaType = normalizeAnthropicImageMimeType(parsed.mimeType);
+    if (!mediaType) {
+      continue;
+    }
+
+    blocks.push({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: mediaType,
+        data: parsed.base64,
+      },
+    });
+  }
+
+  if (blocks.length === 0) {
+    return message.content;
+  }
+
+  return blocks;
+}
+
+function toOpenAIMessage(
+  message: ChatMessage,
+): OpenAI.Chat.Completions.ChatCompletionMessageParam {
+  if (message.role !== 'user' || !message.attachments || message.attachments.length === 0) {
+    return {
+      role: message.role,
+      content: message.content,
+    };
+  }
+
+  const contentParts: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [];
+  if (message.content.trim()) {
+    contentParts.push({ type: 'text', text: message.content });
+  }
+
+  for (const attachment of message.attachments) {
+    contentParts.push({
+      type: 'image_url',
+      image_url: {
+        url: attachment.dataUrl,
+      },
+    });
+  }
+
+  if (contentParts.length === 0) {
+    contentParts.push({ type: 'text', text: '' });
+  }
+
+  return {
+    role: 'user',
+    content: contentParts,
+  };
+}
+
 function throwIfAborted(signal: AbortSignal | null): void {
   if (signal?.aborted) {
     throw new StreamAbortedError();
@@ -55,7 +169,7 @@ export async function* streamAnthropicWithTools(
 
   const messages: Anthropic.MessageParam[] = options.messageHistory.map((msg) => ({
     role: msg.role as 'user' | 'assistant',
-    content: msg.content,
+    content: toAnthropicMessageContent(msg),
   }));
 
   const tools = options.toolsEnabled ? options.toolExecutor.getToolDefinitions() : undefined;
@@ -230,12 +344,9 @@ export async function* streamOpenAICompatible(
 ): AsyncGenerator<StreamChunk, void, unknown> {
   const maxTokens = options.config.maxTokens ?? DEFAULT_MAX_TOKENS;
 
-  const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+  const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: 'system', content: options.systemPrompt || DEFAULT_OPENAI_SYSTEM_PROMPT },
-    ...options.messageHistory.map((msg) => ({
-      role: msg.role as 'user' | 'assistant',
-      content: msg.content,
-    })),
+    ...options.messageHistory.map((msg) => toOpenAIMessage(msg)),
   ];
 
   const stream = await options.client.chat.completions.create(

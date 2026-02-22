@@ -4,10 +4,12 @@ import { SessionStorage } from './session-storage';
 import { ToolExecutor, type DynamicToolRegistration } from './tool-executor';
 import type {
   ChatMessage,
+  ChatImageAttachment,
   CompactHistoryResult,
   MessageItem,
   ModelConfig,
   Provider,
+  RewindHistoryResult,
   StreamChunk,
   ToolCallRecord,
 } from './types';
@@ -52,6 +54,7 @@ function findLatestActiveToolItem(items: MessageItem[]): { type: 'tool'; toolCal
 
 interface SendMessageOptions {
   messageForModel?: string;
+  attachments?: ChatImageAttachment[];
 }
 
 function estimateTokensFromText(text: string): number {
@@ -89,6 +92,18 @@ function summarizeToolItems(items?: MessageItem[]): string[] {
   });
 }
 
+function summarizeAttachments(attachments?: ChatImageAttachment[]): string[] {
+  if (!attachments || attachments.length === 0) {
+    return [];
+  }
+
+  return attachments
+    .slice(0, 3)
+    .map((attachment) => (
+      `图片 ${attachment.name || '未命名'} (${attachment.mimeType}, ${Math.max(1, Math.round(attachment.sizeBytes / 1024))}KB)`
+    ));
+}
+
 function buildCompactionSummary(messages: ChatMessage[]): string {
   const lines: string[] = [
     '[上下文压缩摘要]',
@@ -98,6 +113,11 @@ function buildCompactionSummary(messages: ChatMessage[]): string {
   for (const message of messages) {
     const roleLabel = message.role === 'user' ? '用户' : '助手';
     lines.push(`${roleLabel}: ${compactTextSnippet(message.content)}`);
+
+    const attachmentSummaries = summarizeAttachments(message.attachments);
+    for (const attachmentSummary of attachmentSummaries) {
+      lines.push(`附件记录: ${attachmentSummary}`);
+    }
 
     const toolSummaries = summarizeToolItems(message.items);
     for (const toolSummary of toolSummaries) {
@@ -235,6 +255,50 @@ export class ClaudeService {
     };
   }
 
+  rewindLastTurn(): RewindHistoryResult {
+    const messages = this.sessionStorage.getMessages();
+    if (messages.length === 0) {
+      return {
+        success: true,
+        skipped: true,
+        reason: '当前会话暂无可回退内容',
+        removedMessageCount: 0,
+        remainingMessageCount: 0,
+      };
+    }
+
+    let lastUserIndex = -1;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index]?.role === 'user') {
+        lastUserIndex = index;
+        break;
+      }
+    }
+
+    const rewindFromIndex = lastUserIndex >= 0 ? lastUserIndex : messages.length - 1;
+    const removedMessageCount = messages.length - rewindFromIndex;
+
+    if (removedMessageCount <= 0) {
+      return {
+        success: true,
+        skipped: true,
+        reason: '未找到可回退的最近轮次',
+        removedMessageCount: 0,
+        remainingMessageCount: messages.length,
+      };
+    }
+
+    messages.splice(rewindFromIndex);
+    this.sessionStorage.updateMessages(messages);
+
+    return {
+      success: true,
+      skipped: false,
+      removedMessageCount,
+      remainingMessageCount: messages.length,
+    };
+  }
+
   private maybeAutoCompactHistory(): void {
     const messages = this.sessionStorage.getMessages();
     if (messages.length < MIN_MESSAGES_FOR_COMPACTION) {
@@ -254,11 +318,17 @@ export class ClaudeService {
     }
   }
 
-  private addToHistory(role: 'user' | 'assistant', content: string, items?: MessageItem[]): void {
+  private addToHistory(
+    role: 'user' | 'assistant',
+    content: string,
+    items?: MessageItem[],
+    attachments?: ChatImageAttachment[],
+  ): void {
     const messages = this.sessionStorage.getMessages();
     messages.push({
       role,
       content,
+      attachments,
       items,
       timestamp: Date.now(),
     });
@@ -343,7 +413,7 @@ export class ClaudeService {
     this.maybeAutoCompactHistory();
 
     this.abortController = new AbortController();
-    this.addToHistory('user', message);
+    this.addToHistory('user', message, undefined, options?.attachments);
     const historyForModel = this.sessionStorage.getMessages();
     const modelMessage = options?.messageForModel?.trim();
     if (modelMessage && historyForModel.length > 0) {

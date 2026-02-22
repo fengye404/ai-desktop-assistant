@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { useSessionStore } from '@/stores/session-store';
 import { cn } from '@/lib/utils';
+import { BRANDING } from '../../shared/branding';
 
 interface SidebarProps {
   width: number;
@@ -258,7 +259,7 @@ export function Sidebar({ width }: SidebarProps) {
 
       <div className="border-t border-border/40 p-3 no-drag">
         <p className="text-center text-[11px] uppercase tracking-[0.08em] text-muted-foreground/55">
-          AI Desktop Assistant
+          {BRANDING.productName}
         </p>
       </div>
     </aside>

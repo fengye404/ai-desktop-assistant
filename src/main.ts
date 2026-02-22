@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron';
 import { registerIpcHandlers } from './main-process/ipc/register-ipc-handlers';
 import { MainProcessContext } from './main-process/main-process-context';
 import { createMainWindow } from './main-process/window-factory';
+import { resolveDesktopIconPath } from './main-process/branding-assets';
 
 // Use Vite dev server only when explicitly enabled.
 const useViteDevServer = process.env.VITE_DEV_SERVER === 'true';
@@ -25,6 +26,14 @@ function openMainWindow(): void {
 
 app.whenReady().then(async () => {
   await context.initializeServices();
+
+  if (process.platform === 'darwin') {
+    const desktopIconPath = resolveDesktopIconPath();
+    if (desktopIconPath) {
+      app.dock.setIcon(desktopIconPath);
+    }
+  }
+
   openMainWindow();
 
   app.on('activate', () => {

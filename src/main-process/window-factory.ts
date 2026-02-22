@@ -1,5 +1,7 @@
 import { BrowserWindow } from 'electron';
 import * as path from 'path';
+import { resolveDesktopIconPath } from './branding-assets';
+import { BRANDING } from '../shared/branding';
 
 interface CreateMainWindowOptions {
   useViteDevServer: boolean;
@@ -125,6 +127,7 @@ function buildRendererNotReadyHtml(target: string): string {
 }
 
 export function createMainWindow(options: CreateMainWindowOptions): BrowserWindow {
+  const desktopIconPath = resolveDesktopIconPath();
   const window = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -138,6 +141,8 @@ export function createMainWindow(options: CreateMainWindowOptions): BrowserWindo
     titleBarStyle: 'hiddenInset',
     vibrancy: 'under-window',
     visualEffectState: 'active',
+    title: BRANDING.productName,
+    icon: desktopIconPath,
     show: false,
   });
   let diagnosticsFallbackLoaded = false;

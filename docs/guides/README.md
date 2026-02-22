@@ -8,6 +8,7 @@
 - [页面展示与性能优化记录（2026-02-21）](./ui-performance-optimization-2026-02-21.md)
 - [UI 视觉修复记录（2026-02-21）](./ui-visual-polish-2026-02-21.md)
 - [主题色规范（2026-02-22）](./theme-color-spec-2026-02-22.md)
+- [Icon 处理与替换手册（临时，2026-02-23）](./icon-branding-workflow-temporary-2026-02-23.md)
 
 ## 快速开始
 

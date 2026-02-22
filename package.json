@@ -6,6 +6,7 @@
   "scripts": {
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build",
+    "branding:build": "python3 scripts/branding/build-icons.py",
     "build": "npm run build:main && npm run build:renderer",
     "dev:renderer": "vite",
     "dev:main": "tsc -p tsconfig.main.json -w",
@@ -104,7 +105,7 @@
           ]
         }
       ],
-      "icon": "public/icon.icns"
+      "icon": "public/branding/icon.icns"
     },
     "win": {
       "target": [
@@ -121,7 +122,7 @@
           ]
         }
       ],
-      "icon": "public/icon.ico"
+      "icon": "public/branding/icon.ico"
     },
     "nsis": {
       "oneClick": false,

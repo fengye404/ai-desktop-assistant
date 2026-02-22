@@ -1,14 +1,40 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Send, Square, Trash2, Settings, Sparkles, Bot, AlertTriangle, TerminalSquare, FolderOpen, FileCode2 } from 'lucide-react';
+import {
+  Send,
+  Square,
+  Trash2,
+  Settings,
+  Sparkles,
+  Bot,
+  AlertTriangle,
+  TerminalSquare,
+  FolderOpen,
+  FileCode2,
+  ImagePlus,
+  ChevronLeft,
+  ChevronRight,
+  RotateCcw,
+  X,
+} from 'lucide-react';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { ToolCallBlock } from './ToolCallBlock';
 import { useSessionStore } from '@/stores/session-store';
 import { useChatStore } from '@/stores/chat-store';
 import { useConfigStore } from '@/stores/config-store';
 import { electronApiClient } from '@/services/electron-api-client';
+import type { ChatImageAttachment } from '../../types';
+import { BRANDING } from '../../shared/branding';
 import {
   applyAutocompleteReplacement,
   extractAutocompleteTarget,
@@ -38,6 +64,20 @@ const CONTINUE_MESSAGES = [
   '正在补全答案',
 ];
 const WAIT_TIME_HINT_THRESHOLD_SEC = 8;
+const DOUBLE_ESCAPE_INTERVAL_MS = 450;
+const MAX_ATTACHMENT_IMAGES = 6;
+const MAX_ATTACHMENT_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
+const IMAGE_FILE_EXTENSIONS = new Set([
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.webp',
+  '.bmp',
+  '.svg',
+  '.heic',
+  '.heif',
+]);
 
 type WaitStage = 'approval' | 'model' | null;
 
@@ -55,6 +95,65 @@ interface ComposerAutocompleteState {
   target: ComposerAutocompleteTarget;
   items: ComposerAutocompleteItem[];
   selectedIndex: number;
+}
+
+type PastedImageDraft = ChatImageAttachment;
+
+function formatSizeLabel(sizeBytes: number): string {
+  if (sizeBytes < 1024) {
+    return `${sizeBytes}B`;
+  }
+  if (sizeBytes < 1024 * 1024) {
+    return `${Math.max(1, Math.round(sizeBytes / 1024))}KB`;
+  }
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function isLikelyImageFile(file: Pick<File, 'name' | 'type'>): boolean {
+  if (file.type.startsWith('image/')) {
+    return true;
+  }
+
+  const dotIndex = file.name.lastIndexOf('.');
+  if (dotIndex < 0) {
+    return false;
+  }
+
+  const extension = file.name.slice(dotIndex).toLowerCase();
+  return IMAGE_FILE_EXTENSIONS.has(extension);
+}
+
+function hasImageInDataTransfer(dataTransfer: DataTransfer): boolean {
+  const items = Array.from(dataTransfer.items ?? []);
+  if (items.some((item) => item.kind === 'file' && (item.type.startsWith('image/') || !item.type))) {
+    return true;
+  }
+
+  const files = Array.from(dataTransfer.files ?? []);
+  return files.some((file) => isLikelyImageFile(file));
+}
+
+function collectImageFiles(dataTransfer: DataTransfer): File[] {
+  const deduped = new Map<string, File>();
+
+  const itemFiles = Array.from(dataTransfer.items ?? [])
+    .filter((item) => item.kind === 'file')
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file))
+    .filter((file) => isLikelyImageFile(file));
+
+  for (const file of itemFiles) {
+    const key = `${file.name}|${file.size}|${file.lastModified}`;
+    deduped.set(key, file);
+  }
+
+  const directFiles = Array.from(dataTransfer.files ?? []).filter((file) => isLikelyImageFile(file));
+  for (const file of directFiles) {
+    const key = `${file.name}|${file.size}|${file.lastModified}`;
+    deduped.set(key, file);
+  }
+
+  return Array.from(deduped.values());
 }
 
 function pickAutocompleteSelectedIndex(
@@ -128,6 +227,7 @@ export function ChatArea() {
   const sendMessage = useChatStore((s) => s.sendMessage);
   const cancelStream = useChatStore((s) => s.cancelStream);
   const clearHistory = useChatStore((s) => s.clearHistory);
+  const rewindLastTurn = useChatStore((s) => s.rewindLastTurn);
   const initStreamListener = useChatStore((s) => s.initStreamListener);
   const approveToolCall = useChatStore((s) => s.approveToolCall);
   const rejectToolCall = useChatStore((s) => s.rejectToolCall);
@@ -140,19 +240,34 @@ export function ChatArea() {
   const [thinkingText, setThinkingText] = useState(THINKING_MESSAGES[0]);
   const [waitElapsedSec, setWaitElapsedSec] = useState(0);
   const [autocomplete, setAutocomplete] = useState<ComposerAutocompleteState | null>(null);
+  const [pastedImages, setPastedImages] = useState<PastedImageDraft[]>([]);
+  const [isDropActive, setIsDropActive] = useState(false);
+  const [composerHint, setComposerHint] = useState('');
+  const [brandIconLoadFailed, setBrandIconLoadFailed] = useState(false);
+  const [isRecoveryDialogOpen, setIsRecoveryDialogOpen] = useState(false);
+  const [recoveryActionBusy, setRecoveryActionBusy] = useState(false);
+  const [recoveryMessage, setRecoveryMessage] = useState('');
   const scrollViewportRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const listenerInitialized = useRef(false);
   const waitStartTimestampRef = useRef<number | null>(null);
   const inputRef = useRef(input);
+  const pastedImagesRef = useRef<PastedImageDraft[]>([]);
   const pathAutocompleteRequestSeqRef = useRef(0);
   const suppressCursorAutocompleteRefreshRef = useRef(false);
+  const composerDragDepthRef = useRef(0);
+  const lastEscapePressedAtRef = useRef<number>(0);
+  const inputHistoryRef = useRef<string[]>([]);
+  const inputHistoryIndexRef = useRef<number | null>(null);
+  const inputHistoryDraftRef = useRef('');
   const hasPendingApproval = pendingApprovalId !== null || hasPendingToolApproval(streamItems);
   const hasStreamText = hasTextContent(streamItems);
   const shouldShowThinking = !hasPendingApproval && ((isLoading && !hasStreamText) || isWaitingResponse);
   const shouldShowContinue = !hasPendingApproval && isLoading && hasStreamText && !isWaitingResponse;
   const activeWaitStage: WaitStage = hasPendingApproval ? 'approval' : ((shouldShowThinking || shouldShowContinue) ? 'model' : null);
   const showWaitDurationHint = waitElapsedSec >= WAIT_TIME_HINT_THRESHOLD_SEC;
+  const hasComposedContent = input.trim().length > 0 || pastedImages.length > 0;
 
   const scrollToBottom = useCallback(() => {
     const viewport = scrollViewportRef.current;
@@ -178,6 +293,10 @@ export function ChatArea() {
   useEffect(() => {
     inputRef.current = input;
   }, [input]);
+
+  useEffect(() => {
+    pastedImagesRef.current = pastedImages;
+  }, [pastedImages]);
 
   useEffect(() => {
     if (!autocomplete) return;
@@ -236,9 +355,51 @@ export function ChatArea() {
     return () => cancelAnimationFrame(rafId);
   }, [currentMessages, streamItems, scrollToBottom]);
 
+  useEffect(() => {
+    if (!composerHint) return;
+    const timer = window.setTimeout(() => {
+      setComposerHint('');
+    }, 4200);
+    return () => window.clearTimeout(timer);
+  }, [composerHint]);
+
   const handleAllowAllForSession = useCallback(() => {
     setAllowAllForSession(true);
   }, [setAllowAllForSession]);
+
+  const navigateInputHistory = useCallback((direction: 'prev' | 'next') => {
+    const history = inputHistoryRef.current;
+    if (history.length === 0) {
+      return null;
+    }
+
+    const currentIndex = inputHistoryIndexRef.current;
+    if (direction === 'prev') {
+      if (currentIndex === null) {
+        inputHistoryDraftRef.current = input;
+        inputHistoryIndexRef.current = history.length - 1;
+        return history[history.length - 1] ?? null;
+      }
+      if (currentIndex <= 0) {
+        inputHistoryIndexRef.current = 0;
+        return history[0] ?? null;
+      }
+      inputHistoryIndexRef.current = currentIndex - 1;
+      return history[currentIndex - 1] ?? null;
+    }
+
+    if (currentIndex === null) {
+      return null;
+    }
+
+    if (currentIndex >= history.length - 1) {
+      inputHistoryIndexRef.current = null;
+      return inputHistoryDraftRef.current;
+    }
+
+    inputHistoryIndexRef.current = currentIndex + 1;
+    return history[currentIndex + 1] ?? null;
+  }, [input]);
 
   const updateAutocomplete = useCallback(async (value: string, cursor: number) => {
     const target = extractAutocompleteTarget(value, cursor);
@@ -352,20 +513,279 @@ export function ChatArea() {
     return true;
   }, [autocomplete, input, updateAutocomplete]);
 
+  const readImageAsDataUrl = useCallback((file: File) => {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result);
+          return;
+        }
+        reject(new Error('读取图片失败：无效的 DataURL'));
+      };
+      reader.onerror = () => {
+        reject(new Error('读取图片失败'));
+      };
+      reader.readAsDataURL(file);
+    });
+  }, []);
+
+  const appendImageFiles = useCallback(async (files: File[], sourceLabel: '粘贴' | '拖拽' | '选择') => {
+    if (files.length === 0) {
+      return;
+    }
+
+    const normalizedFiles = files.filter((file) => isLikelyImageFile(file));
+    if (normalizedFiles.length === 0) {
+      setComposerHint('未检测到可用图片，请选择图片文件后重试。');
+      return;
+    }
+
+    const existingImages = pastedImagesRef.current;
+    const existingKeys = new Set(existingImages.map((image) => `${image.name}|${image.sizeBytes}`));
+    const dedupedFiles: File[] = [];
+    let skippedDuplicates = 0;
+    for (const file of normalizedFiles) {
+      const key = `${file.name || '未命名图片'}|${file.size}`;
+      if (existingKeys.has(key)) {
+        skippedDuplicates += 1;
+        continue;
+      }
+      existingKeys.add(key);
+      dedupedFiles.push(file);
+    }
+
+    const remainingSlots = Math.max(0, MAX_ATTACHMENT_IMAGES - existingImages.length);
+    if (remainingSlots <= 0) {
+      setComposerHint(`最多添加 ${MAX_ATTACHMENT_IMAGES} 张图片，请先移除部分附件。`);
+      return;
+    }
+
+    const selectedFiles = dedupedFiles.slice(0, remainingSlots);
+    const skippedByLimit = Math.max(0, dedupedFiles.length - selectedFiles.length);
+    const nextImages: PastedImageDraft[] = [];
+    let skippedOversizeCount = 0;
+    let hasReadFailure = false;
+
+    for (const file of selectedFiles) {
+      if (file.size > MAX_ATTACHMENT_IMAGE_SIZE_BYTES) {
+        skippedOversizeCount += 1;
+        continue;
+      }
+
+      try {
+        const dataUrl = await readImageAsDataUrl(file);
+        nextImages.push({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+          name: file.name || '未命名图片',
+          mimeType: file.type || 'image/*',
+          sizeBytes: file.size,
+          dataUrl,
+        });
+      } catch {
+        hasReadFailure = true;
+      }
+    }
+
+    if (nextImages.length > 0) {
+      setPastedImages((previous) => [...previous, ...nextImages].slice(0, MAX_ATTACHMENT_IMAGES));
+    }
+
+    const hintParts: string[] = [];
+    if (nextImages.length > 0) {
+      hintParts.push(`${sourceLabel}添加 ${nextImages.length} 张图片`);
+    }
+    if (skippedByLimit > 0) {
+      hintParts.push(`${skippedByLimit} 张超出上限已跳过`);
+    }
+    if (skippedOversizeCount > 0) {
+      hintParts.push(`${skippedOversizeCount} 张超过 ${formatSizeLabel(MAX_ATTACHMENT_IMAGE_SIZE_BYTES)} 已跳过`);
+    }
+    if (skippedDuplicates > 0) {
+      hintParts.push(`${skippedDuplicates} 张重复图片已跳过`);
+    }
+    if (hasReadFailure) {
+      hintParts.push('部分图片读取失败');
+    }
+
+    if (hintParts.length > 0) {
+      setComposerHint(`${hintParts.join('，')}。`);
+    }
+
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+    });
+  }, [readImageAsDataUrl]);
+
+  const handleMovePastedImage = useCallback((id: string, direction: 'left' | 'right') => {
+    setPastedImages((previous) => {
+      const index = previous.findIndex((image) => image.id === id);
+      if (index < 0) return previous;
+
+      const targetIndex = direction === 'left' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= previous.length) {
+        return previous;
+      }
+
+      const next = [...previous];
+      const current = next[index];
+      const target = next[targetIndex];
+      if (!current || !target) {
+        return previous;
+      }
+
+      next[index] = target;
+      next[targetIndex] = current;
+      return next;
+    });
+  }, []);
+
+  const handleClearPastedImages = useCallback(() => {
+    if (pastedImages.length === 0) {
+      return;
+    }
+    setPastedImages([]);
+    setComposerHint('已清空图片附件。');
+  }, [pastedImages.length]);
+
+  const handleRemovePastedImage = useCallback((id: string) => {
+    setPastedImages((previous) => previous.filter((image) => image.id !== id));
+  }, []);
+
+  const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = collectImageFiles(e.clipboardData);
+    if (files.length === 0) {
+      return;
+    }
+
+    e.preventDefault();
+    await appendImageFiles(files, '粘贴');
+  }, [appendImageFiles]);
+
+  const handleOpenImagePicker = useCallback(() => {
+    imageInputRef.current?.click();
+  }, []);
+
+  const handleImageInputChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length > 0) {
+      await appendImageFiles(files, '选择');
+    }
+    e.target.value = '';
+  }, [appendImageFiles]);
+
+  const resetComposerDropState = useCallback(() => {
+    composerDragDepthRef.current = 0;
+    setIsDropActive(false);
+  }, []);
+
+  const handleComposerDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasImageInDataTransfer(e.dataTransfer)) {
+      return;
+    }
+    e.preventDefault();
+    composerDragDepthRef.current += 1;
+    if (!isDropActive) {
+      setIsDropActive(true);
+    }
+  }, [isDropActive]);
+
+  const handleComposerDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!hasImageInDataTransfer(e.dataTransfer)) {
+      return;
+    }
+    e.preventDefault();
+    if (!isDropActive) {
+      setIsDropActive(true);
+    }
+  }, [isDropActive]);
+
+  const handleComposerDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    composerDragDepthRef.current = Math.max(0, composerDragDepthRef.current - 1);
+    if (composerDragDepthRef.current === 0) {
+      setIsDropActive(false);
+    }
+  }, []);
+
+  const handleComposerDrop = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const hasImage = hasImageInDataTransfer(e.dataTransfer);
+    if (!hasImage) {
+      resetComposerDropState();
+      return;
+    }
+    resetComposerDropState();
+
+    const files = collectImageFiles(e.dataTransfer);
+    await appendImageFiles(files, '拖拽');
+  }, [appendImageFiles, resetComposerDropState]);
+
+  const handleOpenRecoveryMenu = useCallback(() => {
+    setRecoveryMessage('');
+    setIsRecoveryDialogOpen(true);
+  }, []);
+
+  const handleRewind = useCallback(async () => {
+    setRecoveryActionBusy(true);
+    try {
+      const result = await rewindLastTurn();
+      if (result.skipped) {
+        setRecoveryMessage(result.reason ?? '当前没有可恢复的最近轮次。');
+        return;
+      }
+
+      setRecoveryMessage(`已回退最近轮次，移除 ${result.removedMessageCount} 条消息。`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setRecoveryMessage(`回退失败：${message}`);
+    } finally {
+      setRecoveryActionBusy(false);
+    }
+  }, [rewindLastTurn]);
+
   const handleSend = useCallback(async () => {
-    if (!input.trim() || isLoading) return;
-    const message = input.trim();
-    const isSlashCommand = Boolean(parseSlashCommand(message));
+    if (isLoading) return;
+
+    const inputMessage = input.trim();
+    if (!inputMessage && pastedImages.length === 0) return;
+
+    const isSlashCommand = Boolean(parseSlashCommand(inputMessage));
+    const attachmentsForSend = !isSlashCommand && pastedImages.length > 0 ? pastedImages : undefined;
+    const message = inputMessage;
+
     if (!isSlashCommand && !apiKey) {
       setSettingsOpen(true);
       return;
     }
+
+    if (isSlashCommand && pastedImages.length > 0) {
+      setComposerHint('斜杠命令已执行，粘贴的图片将被忽略。');
+    }
+    const shouldKeepHintAfterSend = isSlashCommand && pastedImages.length > 0;
+
+    if (inputMessage) {
+      const history = inputHistoryRef.current;
+      if (history.length === 0 || history[history.length - 1] !== inputMessage) {
+        history.push(inputMessage);
+        if (history.length > 100) {
+          history.shift();
+        }
+      }
+    }
+    inputHistoryIndexRef.current = null;
+    inputHistoryDraftRef.current = '';
+
     pathAutocompleteRequestSeqRef.current += 1;
     setAutocomplete(null);
     setInput('');
+    setPastedImages([]);
+    if (!shouldKeepHintAfterSend) {
+      setComposerHint('');
+    }
     setThinkingText(THINKING_MESSAGES[0]); // 发送新消息时重置为初始思考文字
-    await sendMessage(message);
-  }, [input, isLoading, apiKey, setSettingsOpen, sendMessage]);
+    await sendMessage(message, attachmentsForSend);
+  }, [input, pastedImages, isLoading, apiKey, setSettingsOpen, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (autocomplete && autocomplete.items.length > 0) {
@@ -420,6 +840,79 @@ export function ChatArea() {
       }
     }
 
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (e.repeat) {
+        return;
+      }
+
+      if (isLoading) {
+        void cancelStream();
+        lastEscapePressedAtRef.current = 0;
+        setComposerHint('已停止当前响应。');
+        return;
+      }
+
+      const now = Date.now();
+      if (now - lastEscapePressedAtRef.current <= DOUBLE_ESCAPE_INTERVAL_MS) {
+        lastEscapePressedAtRef.current = 0;
+        handleOpenRecoveryMenu();
+      } else {
+        lastEscapePressedAtRef.current = now;
+        setComposerHint('再按一次 Esc 打开恢复菜单。');
+      }
+      return;
+    }
+
+    if (!e.metaKey && !e.ctrlKey && !e.altKey && e.key === 'Backspace' && input.length === 0 && pastedImages.length > 0) {
+      e.preventDefault();
+      setPastedImages((previous) => previous.slice(0, -1));
+      setComposerHint('已移除最后一张图片。');
+      return;
+    }
+
+    const hasModifier = e.metaKey || e.ctrlKey || e.altKey || e.shiftKey;
+    if (!hasModifier && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      const textarea = textareaRef.current;
+      if (textarea) {
+        const selectionStart = textarea.selectionStart ?? 0;
+        const selectionEnd = textarea.selectionEnd ?? 0;
+        const hasSelection = selectionStart !== selectionEnd;
+        const atInputStart = selectionStart === 0 && selectionEnd === 0;
+        const atInputEnd = selectionStart === input.length && selectionEnd === input.length;
+
+        if (e.key === 'ArrowUp' && !hasSelection && atInputStart && (input.length === 0 || inputHistoryIndexRef.current !== null)) {
+          const previousInput = navigateInputHistory('prev');
+          if (previousInput !== null) {
+            e.preventDefault();
+            setInput(previousInput);
+            requestAnimationFrame(() => {
+              const nextTextarea = textareaRef.current;
+              if (!nextTextarea) return;
+              const cursor = previousInput.length;
+              nextTextarea.setSelectionRange(cursor, cursor);
+            });
+          }
+          return;
+        }
+
+        if (e.key === 'ArrowDown' && !hasSelection && atInputEnd && inputHistoryIndexRef.current !== null) {
+          const nextInput = navigateInputHistory('next');
+          if (nextInput !== null) {
+            e.preventDefault();
+            setInput(nextInput);
+            requestAnimationFrame(() => {
+              const nextTextarea = textareaRef.current;
+              if (!nextTextarea) return;
+              const cursor = nextInput.length;
+              nextTextarea.setSelectionRange(cursor, cursor);
+            });
+          }
+          return;
+        }
+      }
+    }
+
     if (e.key === 'Tab') {
       const textarea = textareaRef.current;
       if (textarea) {
@@ -436,12 +929,16 @@ export function ChatArea() {
 
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      void handleSend();
     }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const nextValue = e.target.value;
+    if (inputHistoryIndexRef.current !== null) {
+      inputHistoryIndexRef.current = null;
+      inputHistoryDraftRef.current = '';
+    }
     setInput(nextValue);
     void updateAutocomplete(nextValue, e.target.selectionStart ?? nextValue.length);
   };
@@ -479,11 +976,22 @@ export function ChatArea() {
     <main className="chat-canvas relative flex flex-1 flex-col">
       <div className="drag-region flex h-14 items-center justify-between border-b border-border/55 bg-background/55 px-5 backdrop-blur-xl">
         <div className="flex items-center gap-2 no-drag">
-          <div className="w-8 h-8 rounded-lg bg-[linear-gradient(135deg,hsl(var(--primary)/0.24),hsl(var(--cool-accent)/0.2))] border border-border/60 flex items-center justify-center shadow-[0_6px_16px_hsl(var(--cool-accent)/0.14)]">
-            <Sparkles className="h-4 w-4 text-primary" />
+          <div className="h-8 w-8 overflow-hidden rounded-lg border border-border/60 bg-[linear-gradient(135deg,hsl(var(--primary)/0.24),hsl(var(--cool-accent)/0.2))] shadow-[0_6px_16px_hsl(var(--cool-accent)/0.14)]">
+            {brandIconLoadFailed ? (
+              <div className="flex h-full w-full items-center justify-center">
+                <Sparkles className="h-4 w-4 text-primary" />
+              </div>
+            ) : (
+              <img
+                src={BRANDING.rendererIconUrl}
+                alt=""
+                className="h-full w-full object-cover"
+                onError={() => setBrandIconLoadFailed(true)}
+              />
+            )}
           </div>
           <div className="flex items-center gap-2">
-            <h1 className="font-semibold text-sm tracking-[0.04em] text-foreground/95">AI Assistant</h1>
+            <h1 className="font-semibold text-sm tracking-[0.04em] text-foreground/95">{BRANDING.headerName}</h1>
             <span className="text-[10px] uppercase tracking-[0.16em] px-2 py-0.5 rounded-full border border-border/50 bg-secondary/60 text-muted-foreground/80">
               Agent Mode
             </span>
@@ -517,9 +1025,18 @@ export function ChatArea() {
         <div className="max-w-4xl mx-auto px-6 py-7 space-y-4">
           {currentMessages.length === 0 && streamItems.length === 0 && !isLoading && (
             <div className="text-center py-20">
-              <div className="w-20 h-20 rounded-2xl border border-border/60 bg-[linear-gradient(145deg,hsl(var(--primary)/0.2),hsl(var(--cool-accent)/0.16))] flex items-center justify-center mx-auto mb-6 shadow-[0_18px_32px_hsl(var(--background)/0.58)]">
-                <Sparkles className="h-10 w-10 text-[hsl(var(--foreground))]" />
-              </div>
+              {brandIconLoadFailed ? (
+                <div className="w-20 h-20 rounded-2xl border border-border/60 bg-[linear-gradient(145deg,hsl(var(--primary)/0.2),hsl(var(--cool-accent)/0.16))] flex items-center justify-center mx-auto mb-6 shadow-[0_18px_32px_hsl(var(--background)/0.58)]">
+                  <Sparkles className="h-10 w-10 text-[hsl(var(--foreground))]" />
+                </div>
+              ) : (
+                <img
+                  src={BRANDING.rendererIconUrl}
+                  alt={BRANDING.productName}
+                  className="mx-auto mb-6 h-20 w-20 rounded-2xl border border-border/60 object-cover shadow-[0_18px_32px_hsl(var(--background)/0.58)]"
+                  onError={() => setBrandIconLoadFailed(true)}
+                />
+              )}
               <h2 className="text-2xl font-semibold mb-3 text-foreground tracking-tight">开始新对话</h2>
               <p className="text-muted-foreground text-[15px] max-w-xl mx-auto leading-7">
                 一个面向开发效率的 AI 对话工作台。你可以直接提问，也可以从下面的快捷提示开始。
@@ -547,7 +1064,35 @@ export function ChatArea() {
                 className="message-enter flex justify-end"
               >
                 <div className="px-4 py-3.5 rounded-2xl max-w-[82%] user-message rounded-br-md shadow-[0_12px_30px_hsl(var(--primary)/0.12)]">
-                  <MarkdownRenderer content={msg.content} />
+                  {msg.attachments && msg.attachments.length > 0 && (
+                    <div className="mb-2.5 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                      {msg.attachments.map((attachment) => (
+                        <a
+                          key={attachment.id}
+                          href={attachment.dataUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="group overflow-hidden rounded-lg border border-border/60 bg-background/40"
+                        >
+                          <img
+                            src={attachment.dataUrl}
+                            alt={attachment.name}
+                            className="h-20 w-full object-cover transition-transform duration-200 group-hover:scale-[1.04]"
+                          />
+                          <div className="truncate px-1.5 py-1 text-[10px] text-muted-foreground/80">
+                            {attachment.name}
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  {msg.content.trim() ? (
+                    <MarkdownRenderer content={msg.content} />
+                  ) : (
+                    msg.attachments && msg.attachments.length > 0 && (
+                      <p className="text-xs text-muted-foreground/75">[图片消息]</p>
+                    )
+                  )}
                 </div>
               </div>
             ) : msg.items && msg.items.length > 0 ? (
@@ -734,48 +1279,218 @@ export function ChatArea() {
               </div>
             )}
 
-            <div className="flex gap-3 items-end composer-shell rounded-xl border border-border/60 p-2.5 transition-all">
-              <Textarea
-                ref={textareaRef}
-                value={input}
-                onChange={handleInputChange}
-                onKeyDown={handleKeyDown}
-                onClick={handleInputCursorChange}
-                onKeyUp={handleInputKeyUp}
-                onSelect={handleInputCursorChange}
-                onBlur={() => setAutocomplete(null)}
-                placeholder="输入消息… (Enter 发送)"
-                className="flex-1 min-h-[40px] max-h-[200px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-[0.95rem] placeholder:text-muted-foreground/60"
-                rows={1}
+            <div className="space-y-2">
+              {pastedImages.length > 0 && (
+                <div className="rounded-xl border border-border/60 bg-secondary/40 p-2">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/80">
+                      <ImagePlus className="h-3.5 w-3.5" />
+                      <span>图片附件 {pastedImages.length}/{MAX_ATTACHMENT_IMAGES}</span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleClearPastedImages}
+                      className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      清空
+                    </Button>
+                  </div>
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {pastedImages.map((image, imageIndex) => (
+                      <div
+                        key={image.id}
+                        className="group relative w-[74px] shrink-0 overflow-hidden rounded-lg border border-border/60 bg-background/60 p-1"
+                      >
+                        <img
+                          src={image.dataUrl}
+                          alt={image.name}
+                          className="h-14 w-full rounded object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePastedImage(image.id)}
+                          className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-border/70 bg-background/80 text-foreground/75 opacity-0 transition-opacity group-hover:opacity-100"
+                          aria-label={`移除图片 ${image.name}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                        <div className="absolute bottom-1 right-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                          <button
+                            type="button"
+                            onClick={() => handleMovePastedImage(image.id, 'left')}
+                            disabled={imageIndex === 0}
+                            className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border/70 bg-background/85 text-foreground/75 disabled:opacity-35"
+                            aria-label={`左移图片 ${image.name}`}
+                          >
+                            <ChevronLeft className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMovePastedImage(image.id, 'right')}
+                            disabled={imageIndex === pastedImages.length - 1}
+                            className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border/70 bg-background/85 text-foreground/75 disabled:opacity-35"
+                            aria-label={`右移图片 ${image.name}`}
+                          >
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <div className="mt-1 truncate text-[10px] leading-tight text-muted-foreground/85" title={image.name}>
+                          {image.name}
+                        </div>
+                        <div className="truncate text-[10px] text-muted-foreground/75">
+                          {formatSizeLabel(image.sizeBytes)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={handleImageInputChange}
               />
-              {isLoading ? (
+
+              <div
+                className={[
+                  'relative flex gap-3 items-end composer-shell rounded-xl border border-border/60 p-2.5 transition-all',
+                  isDropActive ? 'border-primary/55 bg-[hsl(var(--primary)/0.08)]' : '',
+                ].join(' ')}
+                onDragEnter={handleComposerDragEnter}
+                onDragOver={handleComposerDragOver}
+                onDragLeave={handleComposerDragLeave}
+                onDrop={handleComposerDrop}
+                onDragEnd={resetComposerDropState}
+              >
                 <Button
-                  variant="destructive"
+                  type="button"
+                  variant="ghost"
                   size="icon"
-                  onClick={cancelStream}
-                  aria-label="停止生成"
-                  className="h-10 w-10 rounded-xl shrink-0"
+                  onClick={handleOpenImagePicker}
+                  disabled={pastedImages.length >= MAX_ATTACHMENT_IMAGES}
+                  title="添加图片附件"
+                  aria-label="添加图片附件"
+                  className="h-10 w-10 shrink-0 rounded-xl text-muted-foreground hover:text-foreground disabled:opacity-35"
                 >
-                  <Square className="h-4 w-4" />
+                  <ImagePlus className="h-4 w-4" />
                 </Button>
-              ) : (
-                <Button
-                  size="icon"
-                  onClick={handleSend}
-                  disabled={!input.trim()}
-                  aria-label="发送消息"
-                  className="h-10 w-10 rounded-xl shrink-0 text-primary-foreground shadow-primary/20 disabled:opacity-30"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
+                <Textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
+                  onClick={handleInputCursorChange}
+                  onKeyUp={handleInputKeyUp}
+                  onSelect={handleInputCursorChange}
+                  onPaste={handlePaste}
+                  onBlur={() => setAutocomplete(null)}
+                  placeholder="输入消息… (Enter 发送，Ctrl+V/拖拽/按钮添加图片)"
+                  className="flex-1 min-h-[40px] max-h-[200px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-[0.95rem] placeholder:text-muted-foreground/60"
+                  rows={1}
+                />
+                {isLoading ? (
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    onClick={cancelStream}
+                    aria-label="停止生成"
+                    className="h-10 w-10 rounded-xl shrink-0"
+                  >
+                    <Square className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    size="icon"
+                    onClick={handleSend}
+                    disabled={!hasComposedContent}
+                    aria-label="发送消息"
+                    className="h-10 w-10 rounded-xl shrink-0 text-primary-foreground shadow-primary/20 disabled:opacity-30"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                )}
+                {isDropActive && (
+                  <div className="pointer-events-none absolute inset-0 rounded-xl border border-primary/50 bg-[hsl(var(--background)/0.7)] backdrop-blur-sm flex items-center justify-center">
+                    <div className="flex items-center gap-2 text-sm text-primary">
+                      <ImagePlus className="h-4 w-4" />
+                      松开以添加图片附件
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {composerHint && (
+                <p className="text-[11px] text-[hsl(var(--cool-accent))]">{composerHint}</p>
               )}
             </div>
           </div>
           <p className="text-center text-[11px] text-muted-foreground/65 mt-2 tracking-[0.04em]">
-            Shift+Enter 换行 · 结果可能有误，请核实关键操作
+            Shift+Enter 换行 · Esc 停止生成 · Esc+Esc 恢复菜单 · Ctrl+V/拖拽/按钮添加图片 · Backspace 可删除最后一张附件 · 结果可能有误，请核实关键操作
           </p>
         </div>
       </div>
+
+      <Dialog open={isRecoveryDialogOpen} onOpenChange={setIsRecoveryDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-primary" />
+              恢复菜单
+            </DialogTitle>
+            <DialogDescription>
+              你可以撤销最近一轮对话，或直接清空当前会话。快捷键：`Esc + Esc`。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="px-6 pb-1 space-y-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                void handleRewind();
+              }}
+              disabled={recoveryActionBusy}
+              className="w-full justify-start gap-2"
+            >
+              <RotateCcw className="h-4 w-4" />
+              撤销最近一轮对话
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                void clearHistory();
+                setIsRecoveryDialogOpen(false);
+              }}
+              disabled={recoveryActionBusy}
+              className="w-full justify-start gap-2"
+            >
+              <Trash2 className="h-4 w-4" />
+              清空当前会话
+            </Button>
+            {recoveryMessage && (
+              <p className="text-xs text-muted-foreground">{recoveryMessage}</p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsRecoveryDialogOpen(false)}
+              disabled={recoveryActionBusy}
+            >
+              关闭
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
