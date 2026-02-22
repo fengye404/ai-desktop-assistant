@@ -13,14 +13,20 @@ function sendStreamChunk(context: MainProcessContext, chunk: StreamChunk): void 
 export function registerChatHandlers(context: MainProcessContext): void {
   ipcMain.handle(IPC_CHANNELS.SEND_MESSAGE, async (_event, message: string, systemPrompt?: string) => {
     const service = context.getClaudeServiceOrThrow();
-    return service.sendMessage(message, systemPrompt);
+    const resolvedMessage = context.resolveUserMessage(message);
+    return service.sendMessage(message, systemPrompt, {
+      messageForModel: resolvedMessage.modelMessage,
+    });
   });
 
   ipcMain.handle(IPC_CHANNELS.SEND_MESSAGE_STREAM, async (_event, message: string, systemPrompt?: string) => {
     const service = context.getClaudeServiceOrThrow();
+    const resolvedMessage = context.resolveUserMessage(message);
 
     try {
-      const stream = service.sendMessageStream(message, systemPrompt);
+      const stream = service.sendMessageStream(message, systemPrompt, {
+        messageForModel: resolvedMessage.modelMessage,
+      });
 
       for await (const chunk of stream) {
         sendStreamChunk(context, chunk);
@@ -68,5 +74,14 @@ export function registerChatHandlers(context: MainProcessContext): void {
   ipcMain.handle(IPC_CHANNELS.GET_HISTORY, async () => {
     const service = context.getClaudeServiceOrThrow();
     return service.getHistory();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.COMPACT_HISTORY, async () => {
+    const service = context.getClaudeServiceOrThrow();
+    return service.compactHistory();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.AUTOCOMPLETE_PATHS, async (_event, partialPath: string) => {
+    return context.autocompletePaths(partialPath);
   });
 }

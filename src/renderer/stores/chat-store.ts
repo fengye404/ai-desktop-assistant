@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { electronApiClient } from '@/services/electron-api-client';
+import { formatSlashCommandHelp, parseSlashCommand } from '@/lib/slash-commands';
 import { useConfigStore } from './config-store';
 import { useSessionStore } from './session-store';
 import type { MessageItem, ToolCallRecord } from '../../types';
@@ -67,22 +68,114 @@ export const useChatStore = create<ChatState>((set, get) => {
     return pickStreamState(get());
   };
 
+  const appendAssistantMessage = (content: string) => {
+    const sessionStore = useSessionStore.getState();
+    sessionStore.setCurrentMessages([
+      ...sessionStore.currentMessages,
+      {
+        role: 'assistant',
+        content,
+        timestamp: Date.now(),
+      },
+    ]);
+  };
+
+  const executeSlashCommand = async (input: string): Promise<boolean> => {
+    const command = parseSlashCommand(input);
+    if (!command) {
+      return false;
+    }
+
+    if (command.name === 'help') {
+      appendAssistantMessage(formatSlashCommandHelp());
+      return true;
+    }
+
+    if (command.name === 'clear') {
+      await get().clearHistory();
+      return true;
+    }
+
+    if (command.name === 'compact') {
+      set({ isLoading: true, ...createEmptyStreamState() });
+      try {
+        const result = await electronApiClient.compactHistory();
+        const history = await electronApiClient.getHistory();
+        const sessionStore = useSessionStore.getState();
+        sessionStore.setCurrentMessages(history);
+
+        if (result.skipped) {
+          appendAssistantMessage(`上下文压缩已跳过：${result.reason ?? '暂无可压缩内容。'}`);
+        } else {
+          appendAssistantMessage(
+            `上下文压缩完成：消息 ${result.beforeMessageCount} -> ${result.afterMessageCount}，估算 token ${result.beforeEstimatedTokens} -> ${result.afterEstimatedTokens}。`,
+          );
+        }
+
+        await sessionStore.refreshSessions();
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        appendAssistantMessage(`❌ 上下文压缩失败：${errorMessage}`);
+      } finally {
+        set({ isLoading: false, ...createEmptyStreamState() });
+      }
+      return true;
+    }
+
+    if (command.name === 'config') {
+      useConfigStore.getState().setSettingsOpen(true);
+      appendAssistantMessage('已打开设置面板。');
+      return true;
+    }
+
+    if (command.name === 'model') {
+      const targetModel = command.args.join(' ').trim();
+      if (!targetModel) {
+        appendAssistantMessage('用法：`/model <model-id>`');
+        return true;
+      }
+
+      try {
+        const configStore = useConfigStore.getState();
+        configStore.setModel(targetModel);
+        await configStore.saveConfig();
+        appendAssistantMessage(`模型已切换为 \`${targetModel}\``);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        appendAssistantMessage(`❌ 模型切换失败：${errorMessage}`);
+      }
+      return true;
+    }
+
+    appendAssistantMessage(`未知命令：\`/${command.name}\`。输入 \`/help\` 查看可用命令。`);
+    return true;
+  };
+
   return {
     isLoading: false,
     ...createEmptyStreamState(),
 
     sendMessage: async (message: string) => {
+      const trimmedMessage = message.trim();
+      if (!trimmedMessage) {
+        return;
+      }
+
+      if (await executeSlashCommand(trimmedMessage)) {
+        return;
+      }
+
       const sessionStore = useSessionStore.getState();
       const currentMessages = sessionStore.currentMessages;
       sessionStore.setCurrentMessages([
         ...currentMessages,
-        { role: 'user', content: message, timestamp: Date.now() },
+        { role: 'user', content: trimmedMessage, timestamp: Date.now() },
       ]);
 
       set({ isLoading: true, ...createEmptyStreamState() });
 
       try {
-        await electronApiClient.sendMessageStream(message);
+        await electronApiClient.sendMessageStream(trimmedMessage);
       } catch (error) {
         console.error('[chat-store] Send message error:', error);
         set({ isLoading: false, ...createEmptyStreamState() });

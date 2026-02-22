@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Send, Square, Trash2, Settings, Sparkles, Bot, AlertTriangle } from 'lucide-react';
+import { Send, Square, Trash2, Settings, Sparkles, Bot, AlertTriangle, TerminalSquare, FolderOpen, FileCode2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { ScrollArea } from './ui/scroll-area';
@@ -8,6 +8,16 @@ import { ToolCallBlock } from './ToolCallBlock';
 import { useSessionStore } from '@/stores/session-store';
 import { useChatStore } from '@/stores/chat-store';
 import { useConfigStore } from '@/stores/config-store';
+import { electronApiClient } from '@/services/electron-api-client';
+import {
+  applyAutocompleteReplacement,
+  extractAutocompleteTarget,
+  type ComposerAutocompleteTarget,
+} from '@/lib/composer-autocomplete';
+import {
+  getSlashCommandSuggestions,
+  parseSlashCommand,
+} from '@/lib/slash-commands';
 
 const THINKING_MESSAGES = [
   '思考中',
@@ -30,6 +40,74 @@ const CONTINUE_MESSAGES = [
 const WAIT_TIME_HINT_THRESHOLD_SEC = 8;
 
 type WaitStage = 'approval' | 'model' | null;
+
+interface ComposerAutocompleteItem {
+  key: string;
+  kind: 'slash' | 'path';
+  insertValue: string;
+  label: string;
+  description: string;
+  appendTrailingSpace: boolean;
+  isDirectory?: boolean;
+}
+
+interface ComposerAutocompleteState {
+  target: ComposerAutocompleteTarget;
+  items: ComposerAutocompleteItem[];
+  selectedIndex: number;
+}
+
+function pickAutocompleteSelectedIndex(
+  previousState: ComposerAutocompleteState | null,
+  target: ComposerAutocompleteTarget,
+  nextItems: ComposerAutocompleteItem[],
+): number {
+  if (!previousState || previousState.items.length === 0 || nextItems.length === 0) {
+    return 0;
+  }
+
+  if (previousState.target.kind !== target.kind) {
+    return 0;
+  }
+
+  const previousSelected = previousState.items[previousState.selectedIndex];
+  if (!previousSelected) {
+    return 0;
+  }
+
+  const sameKeyIndex = nextItems.findIndex((item) => item.key === previousSelected.key);
+  if (sameKeyIndex >= 0) {
+    return sameKeyIndex;
+  }
+
+  return Math.min(previousState.selectedIndex, nextItems.length - 1);
+}
+
+function renderHighlightedLabel(label: string, query: string) {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) {
+    return label;
+  }
+
+  const lowerLabel = label.toLowerCase();
+  const lowerQuery = normalizedQuery.toLowerCase();
+  const matchIndex = lowerLabel.indexOf(lowerQuery);
+  if (matchIndex < 0) {
+    return label;
+  }
+
+  const prefix = label.slice(0, matchIndex);
+  const matched = label.slice(matchIndex, matchIndex + normalizedQuery.length);
+  const suffix = label.slice(matchIndex + normalizedQuery.length);
+
+  return (
+    <>
+      {prefix}
+      <span className="rounded-sm bg-[hsl(var(--cool-accent)/0.22)] px-0.5 text-[hsl(var(--cool-accent))] font-medium">{matched}</span>
+      {suffix}
+    </>
+  );
+}
 
 // 检查是否有文本内容输出
 const hasTextContent = (items: { type: string }[]) => {
@@ -61,10 +139,14 @@ export function ChatArea() {
   const [input, setInput] = useState('');
   const [thinkingText, setThinkingText] = useState(THINKING_MESSAGES[0]);
   const [waitElapsedSec, setWaitElapsedSec] = useState(0);
+  const [autocomplete, setAutocomplete] = useState<ComposerAutocompleteState | null>(null);
   const scrollViewportRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const listenerInitialized = useRef(false);
   const waitStartTimestampRef = useRef<number | null>(null);
+  const inputRef = useRef(input);
+  const pathAutocompleteRequestSeqRef = useRef(0);
+  const suppressCursorAutocompleteRefreshRef = useRef(false);
   const hasPendingApproval = pendingApprovalId !== null || hasPendingToolApproval(streamItems);
   const hasStreamText = hasTextContent(streamItems);
   const shouldShowThinking = !hasPendingApproval && ((isLoading && !hasStreamText) || isWaitingResponse);
@@ -92,6 +174,18 @@ export function ChatArea() {
       }
     }
   }, [initStreamListener]);
+
+  useEffect(() => {
+    inputRef.current = input;
+  }, [input]);
+
+  useEffect(() => {
+    if (!autocomplete) return;
+    requestAnimationFrame(() => {
+      const active = document.querySelector<HTMLElement>('[data-autocomplete-active="true"]');
+      active?.scrollIntoView({ block: 'nearest' });
+    });
+  }, [autocomplete]);
 
   // 动态切换思考文字，带淡入淡出效果
   useEffect(() => {
@@ -146,23 +240,233 @@ export function ChatArea() {
     setAllowAllForSession(true);
   }, [setAllowAllForSession]);
 
+  const updateAutocomplete = useCallback(async (value: string, cursor: number) => {
+    const target = extractAutocompleteTarget(value, cursor);
+    if (!target) {
+      pathAutocompleteRequestSeqRef.current += 1;
+      setAutocomplete(null);
+      return;
+    }
+
+    if (target.kind === 'slash') {
+      pathAutocompleteRequestSeqRef.current += 1;
+      const commandSuggestions = getSlashCommandSuggestions(target.query)
+        .slice(0, 8)
+        .map<ComposerAutocompleteItem>((command) => ({
+          key: `slash:${command.name}`,
+          kind: 'slash',
+          insertValue: `/${command.name}`,
+          label: command.usage,
+          description: command.description,
+          appendTrailingSpace: true,
+        }));
+
+      if (commandSuggestions.length === 0) {
+        setAutocomplete(null);
+        return;
+      }
+
+      setAutocomplete((previous) => ({
+        target,
+        items: commandSuggestions,
+        selectedIndex: pickAutocompleteSelectedIndex(previous, target, commandSuggestions),
+      }));
+      return;
+    }
+
+    const requestId = pathAutocompleteRequestSeqRef.current + 1;
+    pathAutocompleteRequestSeqRef.current = requestId;
+
+    const rootedQuery = target.query.startsWith('/') ? target.query : `/${target.query}`;
+    const pathSuggestions = await electronApiClient.autocompletePaths(rootedQuery);
+    if (requestId !== pathAutocompleteRequestSeqRef.current) {
+      return;
+    }
+
+    if (inputRef.current !== value) {
+      return;
+    }
+
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    if ((textarea.selectionStart ?? value.length) !== cursor) {
+      return;
+    }
+
+    const pathItems = pathSuggestions
+      .slice(0, 8)
+      .map<ComposerAutocompleteItem>((item) => ({
+        key: `path:${item.value}`,
+        kind: 'path',
+        insertValue: `@${item.value}`,
+        label: item.value,
+        description: item.isDirectory ? '目录' : '文件',
+        appendTrailingSpace: !item.isDirectory,
+        isDirectory: item.isDirectory,
+      }));
+
+    if (pathItems.length === 0) {
+      setAutocomplete(null);
+      return;
+    }
+
+    setAutocomplete((previous) => ({
+      target,
+      items: pathItems,
+      selectedIndex: pickAutocompleteSelectedIndex(previous, target, pathItems),
+    }));
+  }, []);
+
+  const refreshAutocompleteFromTextarea = useCallback((valueOverride?: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const value = valueOverride ?? textarea.value;
+    const cursor = textarea.selectionStart ?? value.length;
+    void updateAutocomplete(value, cursor);
+  }, [updateAutocomplete]);
+
+  const applyAutocompleteItem = useCallback((index: number) => {
+    if (!autocomplete) return false;
+
+    const item = autocomplete.items[index];
+    if (!item) return false;
+
+    const next = applyAutocompleteReplacement(
+      input,
+      autocomplete.target,
+      item.insertValue,
+      item.appendTrailingSpace,
+    );
+
+    setInput(next.value);
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(next.cursor, next.cursor);
+      void updateAutocomplete(next.value, next.cursor);
+    });
+    return true;
+  }, [autocomplete, input, updateAutocomplete]);
+
   const handleSend = useCallback(async () => {
     if (!input.trim() || isLoading) return;
-    if (!apiKey) {
+    const message = input.trim();
+    const isSlashCommand = Boolean(parseSlashCommand(message));
+    if (!isSlashCommand && !apiKey) {
       setSettingsOpen(true);
       return;
     }
-    const message = input.trim();
+    pathAutocompleteRequestSeqRef.current += 1;
+    setAutocomplete(null);
     setInput('');
     setThinkingText(THINKING_MESSAGES[0]); // 发送新消息时重置为初始思考文字
     await sendMessage(message);
   }, [input, isLoading, apiKey, setSettingsOpen, sendMessage]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (autocomplete && autocomplete.items.length > 0) {
+      const isNextKey = e.key === 'ArrowDown' || (e.ctrlKey && (e.key === 'n' || e.key === 'N'));
+      const isPrevKey = e.key === 'ArrowUp' || (e.ctrlKey && (e.key === 'p' || e.key === 'P'));
+
+      if (isNextKey) {
+        suppressCursorAutocompleteRefreshRef.current = true;
+        e.preventDefault();
+        setAutocomplete((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            selectedIndex: (prev.selectedIndex + 1) % prev.items.length,
+          };
+        });
+        return;
+      }
+
+      if (isPrevKey) {
+        suppressCursorAutocompleteRefreshRef.current = true;
+        e.preventDefault();
+        setAutocomplete((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            selectedIndex: (prev.selectedIndex - 1 + prev.items.length) % prev.items.length,
+          };
+        });
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        suppressCursorAutocompleteRefreshRef.current = true;
+        e.preventDefault();
+        setAutocomplete(null);
+        return;
+      }
+
+      if (e.key === 'Tab') {
+        suppressCursorAutocompleteRefreshRef.current = true;
+        e.preventDefault();
+        applyAutocompleteItem(autocomplete.selectedIndex);
+        return;
+      }
+
+      if (e.key === 'Enter' && !e.shiftKey) {
+        suppressCursorAutocompleteRefreshRef.current = true;
+        e.preventDefault();
+        applyAutocompleteItem(autocomplete.selectedIndex);
+        return;
+      }
+    }
+
+    if (e.key === 'Tab') {
+      const textarea = textareaRef.current;
+      if (textarea) {
+        const value = textarea.value;
+        const cursor = textarea.selectionStart ?? value.length;
+        const target = extractAutocompleteTarget(value, cursor);
+        if (target) {
+          e.preventDefault();
+          void updateAutocomplete(value, cursor);
+        }
+      }
+      return;
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const nextValue = e.target.value;
+    setInput(nextValue);
+    void updateAutocomplete(nextValue, e.target.selectionStart ?? nextValue.length);
+  };
+
+  const handleInputCursorChange = () => {
+    if (suppressCursorAutocompleteRefreshRef.current) {
+      suppressCursorAutocompleteRefreshRef.current = false;
+      return;
+    }
+    refreshAutocompleteFromTextarea();
+  };
+
+  const handleInputKeyUp = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Tab' || e.key === 'Enter' || e.key === 'Escape') {
+      return;
+    }
+
+    if ((e.ctrlKey && (e.key === 'n' || e.key === 'N' || e.key === 'p' || e.key === 'P')) && autocomplete) {
+      return;
+    }
+
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && autocomplete) {
+      return;
+    }
+    refreshAutocompleteFromTextarea();
   };
 
   const promptSuggestions = [
@@ -373,37 +677,102 @@ export function ChatArea() {
 
       <div className="border-t border-border/55 bg-background/45 p-4 backdrop-blur-xl">
         <div className="max-w-4xl mx-auto">
-          <div className="flex gap-3 items-end composer-shell rounded-xl border border-border/60 p-2.5 transition-all">
-            <Textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="输入消息… (Enter 发送)"
-              className="flex-1 min-h-[40px] max-h-[200px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-[0.95rem] placeholder:text-muted-foreground/60"
-              rows={1}
-            />
-            {isLoading ? (
-              <Button
-                variant="destructive"
-                size="icon"
-                onClick={cancelStream}
-                aria-label="停止生成"
-                className="h-10 w-10 rounded-xl shrink-0"
-              >
-                <Square className="h-4 w-4" />
-              </Button>
-            ) : (
-              <Button
-                size="icon"
-                onClick={handleSend}
-                disabled={!input.trim()}
-                aria-label="发送消息"
-                className="h-10 w-10 rounded-xl shrink-0 bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(var(--cool-accent)))] text-black/85 hover:opacity-90 disabled:opacity-30"
-              >
-                <Send className="h-4 w-4" />
-              </Button>
+          <div className="relative">
+            {autocomplete && autocomplete.items.length > 0 && (
+              <div className="absolute bottom-full left-0 right-0 mb-2 no-drag rounded-xl border border-border/70 bg-[linear-gradient(160deg,hsl(var(--secondary)/0.96),hsl(222_18%_11%/0.96))] shadow-[0_14px_30px_hsl(var(--background)/0.55)] overflow-hidden z-20">
+                <div className="max-h-56 overflow-y-auto p-1.5 space-y-1">
+                  {autocomplete.items.map((item, index) => {
+                    const selected = index === autocomplete.selectedIndex;
+                    const icon = item.kind === 'slash'
+                      ? <TerminalSquare className="h-3.5 w-3.5 text-foreground/70" />
+                      : item.isDirectory
+                        ? <FolderOpen className="h-3.5 w-3.5 text-cyan-300/90" />
+                        : <FileCode2 className="h-3.5 w-3.5 text-emerald-300/90" />;
+                    const highlightedLabel = renderHighlightedLabel(item.label, autocomplete.target.query);
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        data-autocomplete-active={selected ? 'true' : 'false'}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          applyAutocompleteItem(index);
+                        }}
+                        className={[
+                          'w-full text-left px-3 py-2.5 rounded-lg transition-all duration-150',
+                          selected
+                            ? 'bg-[linear-gradient(125deg,hsl(var(--cool-accent)/0.2),hsl(var(--secondary)/0.84))] text-foreground shadow-[inset_0_0_0_1px_hsl(var(--cool-accent)/0.36),0_6px_12px_hsl(var(--background)/0.28)]'
+                            : 'bg-transparent text-foreground/88 hover:bg-secondary/72',
+                        ].join(' ')}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm break-all flex items-center gap-2">
+                            {icon}
+                            <span>{highlightedLabel}</span>
+                          </span>
+                          <span className={[
+                            'text-[11px] uppercase tracking-[0.08em] shrink-0',
+                            selected ? 'text-foreground/85' : 'text-muted-foreground/80',
+                          ].join(' ')}>
+                            {item.description}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="px-3 py-1.5 text-[11px] text-muted-foreground/75 border-t border-border/45 flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-1.5">
+                    <span className="rounded-md border border-border/65 bg-secondary/65 px-1.5 py-0.5 text-[10px] text-foreground/85">Tab</span>
+                    <span>补全</span>
+                    <span className="rounded-md border border-border/65 bg-secondary/65 px-1.5 py-0.5 text-[10px] text-foreground/85">↑ ↓</span>
+                    <span>选择</span>
+                    <span className="rounded-md border border-border/65 bg-secondary/65 px-1.5 py-0.5 text-[10px] text-foreground/85">Enter</span>
+                    <span>应用</span>
+                  </span>
+                  <span className="text-cyan-300/90">
+                    {autocomplete.selectedIndex + 1}/{autocomplete.items.length}
+                  </span>
+                </div>
+              </div>
             )}
+
+            <div className="flex gap-3 items-end composer-shell rounded-xl border border-border/60 p-2.5 transition-all">
+              <Textarea
+                ref={textareaRef}
+                value={input}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                onClick={handleInputCursorChange}
+                onKeyUp={handleInputKeyUp}
+                onSelect={handleInputCursorChange}
+                onBlur={() => setAutocomplete(null)}
+                placeholder="输入消息… (Enter 发送)"
+                className="flex-1 min-h-[40px] max-h-[200px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-[0.95rem] placeholder:text-muted-foreground/60"
+                rows={1}
+              />
+              {isLoading ? (
+                <Button
+                  variant="destructive"
+                  size="icon"
+                  onClick={cancelStream}
+                  aria-label="停止生成"
+                  className="h-10 w-10 rounded-xl shrink-0"
+                >
+                  <Square className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button
+                  size="icon"
+                  onClick={handleSend}
+                  disabled={!input.trim()}
+                  aria-label="发送消息"
+                  className="h-10 w-10 rounded-xl shrink-0 bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(var(--cool-accent)))] text-black/85 hover:opacity-90 disabled:opacity-30"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
           <p className="text-center text-[11px] text-muted-foreground/65 mt-2 tracking-[0.04em]">
             Shift+Enter 换行 · 结果可能有误，请核实关键操作

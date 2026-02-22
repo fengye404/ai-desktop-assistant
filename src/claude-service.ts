@@ -2,9 +2,25 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { SessionStorage } from './session-storage';
 import { ToolExecutor } from './tool-executor';
-import type { ChatMessage, MessageItem, ModelConfig, Provider, StreamChunk, ToolCallRecord } from './types';
+import type {
+  ChatMessage,
+  CompactHistoryResult,
+  MessageItem,
+  ModelConfig,
+  Provider,
+  StreamChunk,
+  ToolCallRecord,
+} from './types';
 import { APIKeyError, StreamAbortedError } from './utils/errors';
-import { DEFAULT_MAX_TOKENS, MAX_HISTORY_LENGTH } from './ai/claude-service-constants';
+import {
+  AUTO_COMPACTION_TRIGGER_ESTIMATED_TOKENS,
+  DEFAULT_MAX_TOKENS,
+  KEEP_RECENT_MESSAGES_AFTER_COMPACTION,
+  MAX_COMPACTION_SUMMARY_CHARS,
+  MAX_COMPACTION_SUMMARY_LINES,
+  MAX_HISTORY_LENGTH,
+  MIN_MESSAGES_FOR_COMPACTION,
+} from './ai/claude-service-constants';
 import { createProviderAdapterRegistry } from './ai/providers/provider-adapter-registry';
 import type { ProviderStreamAdapter } from './ai/providers/provider-stream-adapter';
 
@@ -32,6 +48,74 @@ function findLatestActiveToolItem(items: MessageItem[]): { type: 'tool'; toolCal
       item.type === 'tool' &&
       (item.toolCall.status === 'running' || item.toolCall.status === 'queued'),
   );
+}
+
+interface SendMessageOptions {
+  messageForModel?: string;
+}
+
+function estimateTokensFromText(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+function estimateTokensFromHistory(messages: ChatMessage[]): number {
+  return messages.reduce((total, message) => total + estimateTokensFromText(message.content), 0);
+}
+
+function compactTextSnippet(content: string, maxLength = 180): string {
+  const normalized = content.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return '(空)';
+  }
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength)}...`;
+}
+
+function summarizeToolItems(items?: MessageItem[]): string[] {
+  if (!items || items.length === 0) {
+    return [];
+  }
+
+  const toolItems = items
+    .filter((item): item is { type: 'tool'; toolCall: ToolCallRecord } => item.type === 'tool')
+    .slice(0, 3);
+
+  return toolItems.map((item) => {
+    const outputSnippet = item.toolCall.output ? ` | 输出: ${compactTextSnippet(item.toolCall.output, 80)}` : '';
+    const errorSnippet = item.toolCall.error ? ` | 错误: ${compactTextSnippet(item.toolCall.error, 80)}` : '';
+    return `工具 ${item.toolCall.name}(${item.toolCall.status})${outputSnippet}${errorSnippet}`;
+  });
+}
+
+function buildCompactionSummary(messages: ChatMessage[]): string {
+  const lines: string[] = [
+    '[上下文压缩摘要]',
+    '以下是较早对话的关键记录，请作为后续交流的上下文基础。',
+  ];
+
+  for (const message of messages) {
+    const roleLabel = message.role === 'user' ? '用户' : '助手';
+    lines.push(`${roleLabel}: ${compactTextSnippet(message.content)}`);
+
+    const toolSummaries = summarizeToolItems(message.items);
+    for (const toolSummary of toolSummaries) {
+      lines.push(`工具记录: ${toolSummary}`);
+    }
+
+    if (lines.length >= MAX_COMPACTION_SUMMARY_LINES) {
+      lines.push(`(摘要已截断，最多保留 ${MAX_COMPACTION_SUMMARY_LINES} 行)`);
+      break;
+    }
+  }
+
+  const summary = lines.join('\n');
+  if (summary.length <= MAX_COMPACTION_SUMMARY_CHARS) {
+    return summary;
+  }
+
+  return `${summary.slice(0, MAX_COMPACTION_SUMMARY_CHARS)}\n(摘要内容过长，已截断)`;
 }
 
 export class ClaudeService {
@@ -77,16 +161,93 @@ export class ClaudeService {
     this.toolExecutor.setWorkingDirectory(dir);
   }
 
-  private get messageHistory(): ChatMessage[] {
-    return this.sessionStorage.getMessages();
-  }
-
   getHistory(): ChatMessage[] {
     return this.sessionStorage.getMessages();
   }
 
   clearHistory(): void {
     this.sessionStorage.clearMessages();
+  }
+
+  compactHistory(): CompactHistoryResult {
+    const messages = this.sessionStorage.getMessages();
+    const beforeMessageCount = messages.length;
+    const beforeEstimatedTokens = estimateTokensFromHistory(messages);
+
+    if (beforeMessageCount < MIN_MESSAGES_FOR_COMPACTION) {
+      return {
+        success: true,
+        skipped: true,
+        reason: `消息数量少于 ${MIN_MESSAGES_FOR_COMPACTION}，无需压缩`,
+        beforeMessageCount,
+        afterMessageCount: beforeMessageCount,
+        removedMessageCount: 0,
+        beforeEstimatedTokens,
+        afterEstimatedTokens: beforeEstimatedTokens,
+      };
+    }
+
+    const keepRecentCount = Math.min(
+      KEEP_RECENT_MESSAGES_AFTER_COMPACTION,
+      Math.max(2, Math.floor(beforeMessageCount / 2)),
+    );
+    const splitIndex = Math.max(1, beforeMessageCount - keepRecentCount);
+    const toSummarize = messages.slice(0, splitIndex);
+    const recentMessages = messages.slice(splitIndex);
+
+    if (toSummarize.length === 0) {
+      return {
+        success: true,
+        skipped: true,
+        reason: '没有可压缩的历史消息',
+        beforeMessageCount,
+        afterMessageCount: beforeMessageCount,
+        removedMessageCount: 0,
+        beforeEstimatedTokens,
+        afterEstimatedTokens: beforeEstimatedTokens,
+      };
+    }
+
+    const summaryMessage: ChatMessage = {
+      role: 'user',
+      content: buildCompactionSummary(toSummarize),
+      timestamp: toSummarize[0].timestamp ?? Date.now(),
+    };
+
+    const compactedMessages = [summaryMessage, ...recentMessages];
+    this.sessionStorage.updateMessages(compactedMessages);
+
+    const afterMessageCount = compactedMessages.length;
+    const afterEstimatedTokens = estimateTokensFromHistory(compactedMessages);
+
+    return {
+      success: true,
+      skipped: false,
+      beforeMessageCount,
+      afterMessageCount,
+      removedMessageCount: beforeMessageCount - afterMessageCount,
+      beforeEstimatedTokens,
+      afterEstimatedTokens,
+    };
+  }
+
+  private maybeAutoCompactHistory(): void {
+    const messages = this.sessionStorage.getMessages();
+    if (messages.length < MIN_MESSAGES_FOR_COMPACTION) {
+      return;
+    }
+
+    const estimatedTokens = estimateTokensFromHistory(messages);
+    if (estimatedTokens < AUTO_COMPACTION_TRIGGER_ESTIMATED_TOKENS) {
+      return;
+    }
+
+    const result = this.compactHistory();
+    if (!result.skipped) {
+      console.info(
+        `[claude-service] Auto compact history: ${result.beforeEstimatedTokens} -> ${result.afterEstimatedTokens} tokens`,
+      );
+    }
   }
 
   private addToHistory(role: 'user' | 'assistant', content: string, items?: MessageItem[]): void {
@@ -152,6 +313,7 @@ export class ClaudeService {
   }
 
   private streamProviderResponse(
+    messageHistory: ChatMessage[],
     systemPrompt?: string,
   ): AsyncGenerator<StreamChunk, void, unknown> {
     const adapter = this.providerAdapters.get(this.config.provider);
@@ -161,7 +323,7 @@ export class ClaudeService {
 
     return adapter.createStream({
       config: this.config,
-      messageHistory: this.messageHistory,
+      messageHistory,
       abortSignal: this.abortController?.signal ?? null,
       systemPrompt,
       toolsEnabled: this.toolsEnabled,
@@ -172,9 +334,21 @@ export class ClaudeService {
   async *sendMessageStream(
     message: string,
     systemPrompt?: string,
+    options?: SendMessageOptions,
   ): AsyncGenerator<StreamChunk, void, unknown> {
+    this.maybeAutoCompactHistory();
+
     this.abortController = new AbortController();
     this.addToHistory('user', message);
+    const historyForModel = this.sessionStorage.getMessages();
+    const modelMessage = options?.messageForModel?.trim();
+    if (modelMessage && historyForModel.length > 0) {
+      const lastIndex = historyForModel.length - 1;
+      historyForModel[lastIndex] = {
+        ...historyForModel[lastIndex],
+        content: modelMessage,
+      };
+    }
 
     let assistantResponse = '';
     const items: MessageItem[] = [];
@@ -182,7 +356,7 @@ export class ClaudeService {
     const toolCallsMap = new Map<string, ToolCallRecord>();
 
     try {
-      for await (const chunk of this.streamProviderResponse(systemPrompt)) {
+      for await (const chunk of this.streamProviderResponse(historyForModel, systemPrompt)) {
         if (chunk.type === 'text') {
           assistantResponse += chunk.content;
           currentTextContent += chunk.content;
@@ -265,9 +439,9 @@ export class ClaudeService {
     }
   }
 
-  async sendMessage(message: string, systemPrompt?: string): Promise<string> {
+  async sendMessage(message: string, systemPrompt?: string, options?: SendMessageOptions): Promise<string> {
     const chunks: string[] = [];
-    for await (const chunk of this.sendMessageStream(message, systemPrompt)) {
+    for await (const chunk of this.sendMessageStream(message, systemPrompt, options)) {
       if (chunk.type === 'error') {
         throw new Error(chunk.content);
       }

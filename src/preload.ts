@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ElectronAPI, ModelConfig, StreamChunk, ToolApprovalRequest } from './types';
+import type {
+  CompactHistoryResult,
+  ElectronAPI,
+  ModelConfig,
+  PathAutocompleteItem,
+  StreamChunk,
+  ToolApprovalRequest,
+} from './types';
 
 let streamChunkListener: ((_event: Electron.IpcRendererEvent, chunk: unknown) => void) | null = null;
 let toolApprovalListener: ((_event: Electron.IpcRendererEvent, request: unknown) => void) | null = null;
@@ -17,6 +24,8 @@ const IPC_CHANNELS = {
   DECRYPT_DATA: 'decrypt-data',
   CLEAR_HISTORY: 'clear-history',
   GET_HISTORY: 'get-history',
+  COMPACT_HISTORY: 'compact-history',
+  AUTOCOMPLETE_PATHS: 'autocomplete-paths',
 
   // Session management
   SESSION_LIST: 'session-list',
@@ -91,6 +100,12 @@ const electronAPI: ElectronAPI = {
 
   getHistory: () =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_HISTORY),
+
+  compactHistory: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.COMPACT_HISTORY) as Promise<CompactHistoryResult>,
+
+  autocompletePaths: (partialPath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.AUTOCOMPLETE_PATHS, partialPath) as Promise<PathAutocompleteItem[]>,
 
   sessionList: () =>
     ipcRenderer.invoke(IPC_CHANNELS.SESSION_LIST),

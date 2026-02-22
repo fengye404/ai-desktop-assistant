@@ -195,6 +195,28 @@ export interface ConnectionTestResult {
 }
 
 /**
+ * History compaction result
+ */
+export interface CompactHistoryResult {
+  success: boolean;
+  skipped: boolean;
+  reason?: string;
+  beforeMessageCount: number;
+  afterMessageCount: number;
+  removedMessageCount: number;
+  beforeEstimatedTokens: number;
+  afterEstimatedTokens: number;
+}
+
+/**
+ * Path autocomplete item for @ reference input
+ */
+export interface PathAutocompleteItem {
+  value: string;
+  isDirectory: boolean;
+}
+
+/**
  * IPC channel names for type safety
  */
 export const IPC_CHANNELS = {
@@ -208,6 +230,8 @@ export const IPC_CHANNELS = {
   DECRYPT_DATA: 'decrypt-data',
   CLEAR_HISTORY: 'clear-history',
   GET_HISTORY: 'get-history',
+  COMPACT_HISTORY: 'compact-history',
+  AUTOCOMPLETE_PATHS: 'autocomplete-paths',
 
   // Session management
   SESSION_LIST: 'session-list',
@@ -244,6 +268,8 @@ export interface ElectronAPI {
   decryptData: (encryptedData: string) => Promise<string>;
   clearHistory: () => Promise<void>;
   getHistory: () => Promise<ChatMessage[]>;
+  compactHistory: () => Promise<CompactHistoryResult>;
+  autocompletePaths: (partialPath: string) => Promise<PathAutocompleteItem[]>;
 
   // Session management
   sessionList: () => Promise<SessionMeta[]>;

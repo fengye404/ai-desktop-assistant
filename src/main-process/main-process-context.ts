@@ -1,14 +1,46 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import type { BrowserWindow } from 'electron';
+import { app } from 'electron';
 import { ClaudeService } from '../claude-service';
 import { SessionStorage } from '../session-storage';
-import type { ToolApprovalRequest } from '../types';
+import type { PathAutocompleteItem, ToolApprovalRequest } from '../types';
 import { ServiceNotInitializedError } from '../utils/errors';
 import { ToolApprovalCoordinator } from './tool-approval-coordinator';
+import { FileReferenceResolver, type ResolvedUserMessage } from './chat-input/file-reference-resolver';
+import { PathAutocompleteService } from './chat-input/path-autocomplete';
 
 function buildApprovalDescription(input: Record<string, unknown>): string {
   return Object.entries(input)
     .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
     .join('\n');
+}
+
+function hasPackageJson(targetPath: string): boolean {
+  return fs.existsSync(path.join(targetPath, 'package.json'));
+}
+
+function resolveWorkspaceRoot(): string {
+  const candidates = [
+    process.env.INIT_CWD,
+    process.cwd(),
+    app.getAppPath(),
+  ].filter((value): value is string => Boolean(value))
+    .map((value) => path.resolve(value));
+
+  for (const candidate of candidates) {
+    if (hasPackageJson(candidate)) {
+      if (path.basename(candidate) === 'dist') {
+        const parent = path.dirname(candidate);
+        if (hasPackageJson(parent)) {
+          return parent;
+        }
+      }
+      return candidate;
+    }
+  }
+
+  return path.resolve(process.cwd());
 }
 
 /**
@@ -18,6 +50,9 @@ export class MainProcessContext {
   private mainWindow: BrowserWindow | null = null;
   private claudeService: ClaudeService | null = null;
   private sessionStorage: SessionStorage | null = null;
+  private readonly workspaceRoot = resolveWorkspaceRoot();
+  private readonly fileReferenceResolver = new FileReferenceResolver(this.workspaceRoot);
+  private readonly pathAutocompleteService = new PathAutocompleteService(this.workspaceRoot);
 
   readonly toolApproval = new ToolApprovalCoordinator(() => this.mainWindow);
 
@@ -32,6 +67,7 @@ export class MainProcessContext {
   initializeServices(): void {
     this.sessionStorage = new SessionStorage();
     this.claudeService = new ClaudeService(this.sessionStorage);
+    this.claudeService.setWorkingDirectory(this.workspaceRoot);
 
     this.claudeService.setToolPermissionCallback(async (toolName, input) => {
       const request: ToolApprovalRequest = {
@@ -65,6 +101,14 @@ export class MainProcessContext {
       throw new ServiceNotInitializedError('Session storage');
     }
     return this.sessionStorage;
+  }
+
+  resolveUserMessage(message: string): ResolvedUserMessage {
+    return this.fileReferenceResolver.resolve(message);
+  }
+
+  autocompletePaths(partialPath: string): PathAutocompleteItem[] {
+    return this.pathAutocompleteService.suggest(partialPath);
   }
 
   private ensureInitialSession(): void {

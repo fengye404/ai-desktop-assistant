@@ -1,8 +1,10 @@
 import type {
   ChatMessage,
+  CompactHistoryResult,
   ConnectionTestResult,
   ElectronAPI,
   ModelConfig,
+  PathAutocompleteItem,
   Session,
   SessionMeta,
   StreamChunk,
@@ -101,6 +103,16 @@ export const electronApiClient = {
   getHistory: (): Promise<ChatMessage[]> => {
     const api = getApiOrNull();
     return api ? api.getHistory() : Promise.resolve([]);
+  },
+
+  compactHistory: (): Promise<CompactHistoryResult> => {
+    const api = getApiOrNull();
+    return api ? api.compactHistory() : rejectUnavailable('compactHistory');
+  },
+
+  autocompletePaths: (partialPath: string): Promise<PathAutocompleteItem[]> => {
+    const api = getApiOrNull();
+    return api ? api.autocompletePaths(partialPath) : Promise.resolve([]);
   },
 
   sessionList: (): Promise<SessionMeta[]> => {
