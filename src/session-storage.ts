@@ -2,7 +2,14 @@ import { app } from 'electron';
 import * as path from 'path';
 import * as zlib from 'zlib';
 import Database from 'better-sqlite3';
-import type { Session, SessionMeta, ChatMessage, ModelConfig, MessageItem } from './types';
+import type {
+  Session,
+  SessionMeta,
+  ChatMessage,
+  ModelConfig,
+  MessageItem,
+  McpServersConfig,
+} from './types';
 
 /**
  * Compress data using gzip
@@ -81,7 +88,7 @@ export class SessionStorage {
 
     // Migration: Add items_data column if not exists
     try {
-      this.db.exec(`ALTER TABLE messages ADD COLUMN items_data BLOB`);
+      this.db.exec('ALTER TABLE messages ADD COLUMN items_data BLOB');
     } catch {
       // Column already exists
     }
@@ -153,6 +160,44 @@ export class SessionStorage {
     }
 
     return config;
+  }
+
+  /**
+   * Save MCP servers configuration
+   */
+  saveMcpServers(config: McpServersConfig): void {
+    const payload = JSON.stringify(config);
+    this.db
+      .prepare(
+        `
+      INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)
+    `
+      )
+      .run('mcpServers', payload);
+  }
+
+  /**
+   * Load MCP servers configuration
+   */
+  loadMcpServers(): McpServersConfig {
+    const row = this.db
+      .prepare('SELECT value FROM config WHERE key = ?')
+      .get('mcpServers') as { value: string } | undefined;
+
+    if (!row?.value) {
+      return {};
+    }
+
+    try {
+      const parsed = JSON.parse(row.value) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return {};
+      }
+
+      return parsed as McpServersConfig;
+    } catch {
+      return {};
+    }
   }
 
   // ==================== Session Methods ====================

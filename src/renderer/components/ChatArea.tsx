@@ -479,7 +479,7 @@ export function ChatArea() {
     <main className="chat-canvas relative flex flex-1 flex-col">
       <div className="drag-region flex h-14 items-center justify-between border-b border-border/55 bg-background/55 px-5 backdrop-blur-xl">
         <div className="flex items-center gap-2 no-drag">
-          <div className="w-8 h-8 rounded-lg bg-[linear-gradient(135deg,hsl(var(--primary)/0.3),hsl(var(--cool-accent)/0.28))] border border-border/60 flex items-center justify-center shadow-[0_6px_20px_hsl(var(--cool-accent)/0.2)]">
+          <div className="w-8 h-8 rounded-lg bg-[linear-gradient(135deg,hsl(var(--primary)/0.24),hsl(var(--cool-accent)/0.2))] border border-border/60 flex items-center justify-center shadow-[0_6px_16px_hsl(var(--cool-accent)/0.14)]">
             <Sparkles className="h-4 w-4 text-primary" />
           </div>
           <div className="flex items-center gap-2">
@@ -517,7 +517,7 @@ export function ChatArea() {
         <div className="max-w-4xl mx-auto px-6 py-7 space-y-4">
           {currentMessages.length === 0 && streamItems.length === 0 && !isLoading && (
             <div className="text-center py-20">
-              <div className="w-20 h-20 rounded-2xl border border-border/60 bg-[linear-gradient(145deg,hsl(var(--primary)/0.25),hsl(var(--cool-accent)/0.2))] flex items-center justify-center mx-auto mb-6 shadow-[0_20px_40px_hsl(var(--background)/0.65)]">
+              <div className="w-20 h-20 rounded-2xl border border-border/60 bg-[linear-gradient(145deg,hsl(var(--primary)/0.2),hsl(var(--cool-accent)/0.16))] flex items-center justify-center mx-auto mb-6 shadow-[0_18px_32px_hsl(var(--background)/0.58)]">
                 <Sparkles className="h-10 w-10 text-[hsl(var(--foreground))]" />
               </div>
               <h2 className="text-2xl font-semibold mb-3 text-foreground tracking-tight">开始新对话</h2>
@@ -587,10 +587,7 @@ export function ChatArea() {
             item.type === 'text' ? (
               <div key={`text-${i}`} className="flex justify-start message-enter">
                 <div className="px-4 py-3.5 rounded-2xl rounded-bl-md assistant-message max-w-[82%]">
-                  {/* Stream mode uses plain text for smooth incremental rendering. */}
-                  <div className="whitespace-pre-wrap break-words text-[0.9375rem]">
-                    {item.content}
-                  </div>
+                  <MarkdownRenderer content={item.content} />
                 </div>
               </div>
             ) : (
@@ -610,13 +607,13 @@ export function ChatArea() {
 
           {hasPendingApproval && (
             <div className="flex justify-start message-enter">
-              <div className="px-4 py-3 rounded-2xl rounded-bl-md assistant-message border border-yellow-500/30 bg-yellow-500/10">
+              <div className="px-4 py-3 rounded-2xl rounded-bl-md assistant-message border border-primary/35 bg-primary/12">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-yellow-400" />
+                  <AlertTriangle className="h-4 w-4 text-primary" />
                   <span className="text-sm text-foreground/85">等待你确认工具调用</span>
                 </div>
                 {showWaitDurationHint && activeWaitStage === 'approval' && (
-                  <div className="mt-1 text-xs text-yellow-200/80">
+                  <div className="mt-1 text-xs text-primary/85">
                     已等待 {waitElapsedSec} 秒
                   </div>
                 )}
@@ -686,8 +683,8 @@ export function ChatArea() {
                     const icon = item.kind === 'slash'
                       ? <TerminalSquare className="h-3.5 w-3.5 text-foreground/70" />
                       : item.isDirectory
-                        ? <FolderOpen className="h-3.5 w-3.5 text-cyan-300/90" />
-                        : <FileCode2 className="h-3.5 w-3.5 text-emerald-300/90" />;
+                        ? <FolderOpen className="h-3.5 w-3.5 text-[hsl(var(--cool-accent))]" />
+                        : <FileCode2 className="h-3.5 w-3.5 text-primary" />;
                     const highlightedLabel = renderHighlightedLabel(item.label, autocomplete.target.query);
                     return (
                       <button
@@ -730,7 +727,7 @@ export function ChatArea() {
                     <span className="rounded-md border border-border/65 bg-secondary/65 px-1.5 py-0.5 text-[10px] text-foreground/85">Enter</span>
                     <span>应用</span>
                   </span>
-                  <span className="text-cyan-300/90">
+                  <span className="text-[hsl(var(--cool-accent))]">
                     {autocomplete.selectedIndex + 1}/{autocomplete.items.length}
                   </span>
                 </div>
@@ -767,7 +764,7 @@ export function ChatArea() {
                   onClick={handleSend}
                   disabled={!input.trim()}
                   aria-label="发送消息"
-                  className="h-10 w-10 rounded-xl shrink-0 bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(var(--cool-accent)))] text-black/85 hover:opacity-90 disabled:opacity-30"
+                  className="h-10 w-10 rounded-xl shrink-0 text-primary-foreground shadow-primary/20 disabled:opacity-30"
                 >
                   <Send className="h-4 w-4" />
                 </Button>

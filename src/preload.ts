@@ -2,6 +2,10 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   CompactHistoryResult,
   ElectronAPI,
+  McpRefreshResult,
+  McpServerConfig,
+  McpServerStatus,
+  McpToolInfo,
   ModelConfig,
   PathAutocompleteItem,
   StreamChunk,
@@ -38,6 +42,13 @@ const IPC_CHANNELS = {
   // Config management
   CONFIG_SAVE: 'config-save',
   CONFIG_LOAD: 'config-load',
+
+  // MCP management
+  MCP_LIST_SERVERS: 'mcp-list-servers',
+  MCP_LIST_TOOLS: 'mcp-list-tools',
+  MCP_REFRESH: 'mcp-refresh',
+  MCP_UPSERT_SERVER: 'mcp-upsert-server',
+  MCP_REMOVE_SERVER: 'mcp-remove-server',
 
   // Tool system
   TOOL_APPROVAL_REQUEST: 'tool-approval-request',
@@ -130,6 +141,21 @@ const electronAPI: ElectronAPI = {
 
   configLoad: () =>
     ipcRenderer.invoke(IPC_CHANNELS.CONFIG_LOAD),
+
+  mcpListServers: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_LIST_SERVERS) as Promise<McpServerStatus[]>,
+
+  mcpListTools: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_LIST_TOOLS) as Promise<McpToolInfo[]>,
+
+  mcpRefresh: () =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_REFRESH) as Promise<McpRefreshResult>,
+
+  mcpUpsertServer: (name: string, config: McpServerConfig) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_UPSERT_SERVER, name, config) as Promise<McpRefreshResult>,
+
+  mcpRemoveServer: (name: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MCP_REMOVE_SERVER, name) as Promise<McpRefreshResult>,
 
   onToolApprovalRequest: (callback: (request: ToolApprovalRequest) => void) => {
     toolApprovalListener = replaceListener(

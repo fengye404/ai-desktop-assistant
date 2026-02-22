@@ -6,6 +6,13 @@ import type { ToolDefinition, ToolResult } from './types';
 
 const execAsync = promisify(exec);
 
+type DynamicToolHandler = (input: Record<string, unknown>) => Promise<ToolResult>;
+
+export interface DynamicToolRegistration {
+  definition: ToolDefinition;
+  execute: DynamicToolHandler;
+}
+
 /**
  * Built-in tool definitions
  */
@@ -207,6 +214,7 @@ export const BUILT_IN_TOOLS: ToolDefinition[] = [
 export class ToolExecutor {
   private workingDirectory: string;
   private permissionCallback: ((tool: string, input: Record<string, unknown>) => Promise<boolean>) | null = null;
+  private readonly dynamicTools = new Map<string, DynamicToolRegistration>();
 
   constructor(workingDirectory?: string) {
     this.workingDirectory = workingDirectory || process.cwd();
@@ -226,6 +234,21 @@ export class ToolExecutor {
     this.workingDirectory = dir;
   }
 
+  setDynamicTools(tools: DynamicToolRegistration[]): void {
+    this.dynamicTools.clear();
+
+    for (const tool of tools) {
+      const name = tool.definition.name;
+      if (!name) continue;
+
+      if (BUILT_IN_TOOLS.some((builtinTool) => builtinTool.name === name)) {
+        continue;
+      }
+
+      this.dynamicTools.set(name, tool);
+    }
+  }
+
   /**
    * Get tool definitions for API
    */
@@ -234,19 +257,30 @@ export class ToolExecutor {
     description: string;
     input_schema: ToolDefinition['input_schema'];
   }> {
-    return BUILT_IN_TOOLS.map((tool) => ({
+    const builtInDefinitions = BUILT_IN_TOOLS.map((tool) => ({
       name: tool.name,
       description: tool.description,
       input_schema: tool.input_schema,
     }));
+
+    const dynamicDefinitions = Array.from(this.dynamicTools.values()).map((tool) => ({
+      name: tool.definition.name,
+      description: tool.definition.description,
+      input_schema: tool.definition.input_schema,
+    }));
+
+    return [...builtInDefinitions, ...dynamicDefinitions];
   }
 
   /**
    * Execute a tool by name
    */
   async executeTool(name: string, input: Record<string, unknown>): Promise<ToolResult> {
-    const toolDef = BUILT_IN_TOOLS.find((t) => t.name === name);
-    if (!toolDef) {
+    const builtInTool = BUILT_IN_TOOLS.find((t) => t.name === name);
+    const dynamicTool = this.dynamicTools.get(name);
+    const toolDef = builtInTool ?? dynamicTool?.definition;
+
+    if (!toolDef || (!builtInTool && !dynamicTool)) {
       return { success: false, error: `Unknown tool: ${name}` };
     }
 
@@ -264,50 +298,54 @@ export class ToolExecutor {
 
     // Execute tool
     try {
+      if (dynamicTool) {
+        return await dynamicTool.execute(input);
+      }
+
       switch (name) {
-        case 'read_file':
-          return await this.readFile(
+      case 'read_file':
+        return await this.readFile(
             input.path as string,
             input.offset as string | undefined,
             input.limit as string | undefined
-          );
-        case 'list_directory':
-          return await this.listDirectory(input.path as string);
-        case 'write_file':
-          return await this.writeFile(input.path as string, input.content as string);
-        case 'edit_file':
-          return await this.editFile(
+        );
+      case 'list_directory':
+        return await this.listDirectory(input.path as string);
+      case 'write_file':
+        return await this.writeFile(input.path as string, input.content as string);
+      case 'edit_file':
+        return await this.editFile(
             input.path as string,
             input.old_string as string,
             input.new_string as string,
             input.replace_all as string | undefined
-          );
-        case 'run_command':
-          return await this.runCommand(
+        );
+      case 'run_command':
+        return await this.runCommand(
             input.command as string,
             input.cwd as string | undefined,
             input.timeout as string | undefined
-          );
-        case 'search_files':
-          return await this.searchFiles(input.pattern as string, input.cwd as string | undefined);
-        case 'grep_search':
-          return await this.grepSearch(
+        );
+      case 'search_files':
+        return await this.searchFiles(input.pattern as string, input.cwd as string | undefined);
+      case 'grep_search':
+        return await this.grepSearch(
             input.pattern as string,
             input.path as string | undefined,
             input.glob as string | undefined,
             input.ignore_case as string | undefined,
             input.context_lines as string | undefined,
             input.max_results as string | undefined
-          );
-        case 'web_fetch':
-          return await this.webFetch(
+        );
+      case 'web_fetch':
+        return await this.webFetch(
             input.url as string,
             input.timeout as string | undefined
-          );
-        case 'get_system_info':
-          return await this.getSystemInfo();
-        default:
-          return { success: false, error: `Tool ${name} not implemented` };
+        );
+      case 'get_system_info':
+        return await this.getSystemInfo();
+      default:
+        return { success: false, error: `Tool ${name} not implemented` };
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

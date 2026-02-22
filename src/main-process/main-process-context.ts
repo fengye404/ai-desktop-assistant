@@ -4,11 +4,19 @@ import type { BrowserWindow } from 'electron';
 import { app } from 'electron';
 import { ClaudeService } from '../claude-service';
 import { SessionStorage } from '../session-storage';
-import type { PathAutocompleteItem, ToolApprovalRequest } from '../types';
+import type {
+  McpRefreshResult,
+  McpServerConfig,
+  McpServerStatus,
+  McpToolInfo,
+  PathAutocompleteItem,
+  ToolApprovalRequest,
+} from '../types';
 import { ServiceNotInitializedError } from '../utils/errors';
 import { ToolApprovalCoordinator } from './tool-approval-coordinator';
 import { FileReferenceResolver, type ResolvedUserMessage } from './chat-input/file-reference-resolver';
 import { PathAutocompleteService } from './chat-input/path-autocomplete';
+import { McpManager } from './mcp/mcp-manager';
 
 function buildApprovalDescription(input: Record<string, unknown>): string {
   return Object.entries(input)
@@ -53,6 +61,7 @@ export class MainProcessContext {
   private readonly workspaceRoot = resolveWorkspaceRoot();
   private readonly fileReferenceResolver = new FileReferenceResolver(this.workspaceRoot);
   private readonly pathAutocompleteService = new PathAutocompleteService(this.workspaceRoot);
+  private readonly mcpManager = new McpManager(this.workspaceRoot);
 
   readonly toolApproval = new ToolApprovalCoordinator(() => this.mainWindow);
 
@@ -64,7 +73,7 @@ export class MainProcessContext {
     return this.mainWindow;
   }
 
-  initializeServices(): void {
+  async initializeServices(): Promise<void> {
     this.sessionStorage = new SessionStorage();
     this.claudeService = new ClaudeService(this.sessionStorage);
     this.claudeService.setWorkingDirectory(this.workspaceRoot);
@@ -79,10 +88,12 @@ export class MainProcessContext {
     });
 
     this.ensureInitialSession();
+    await this.initializeMcp();
   }
 
   cleanup(): void {
     this.toolApproval.dispose();
+    this.mcpManager.dispose();
     this.claudeService?.cleanup();
     this.claudeService = null;
     this.sessionStorage = null;
@@ -111,6 +122,44 @@ export class MainProcessContext {
     return this.pathAutocompleteService.suggest(partialPath);
   }
 
+  listMcpServers(): McpServerStatus[] {
+    return this.mcpManager.listServerStatus();
+  }
+
+  listMcpTools(): McpToolInfo[] {
+    return this.mcpManager.listToolInfo();
+  }
+
+  async refreshMcp(): Promise<McpRefreshResult> {
+    const result = await this.mcpManager.refresh();
+    this.syncMcpToolsToClaudeService();
+    return result;
+  }
+
+  async upsertMcpServer(name: string, config: McpServerConfig): Promise<McpRefreshResult> {
+    const storage = this.getSessionStorageOrThrow();
+    const nextConfig = this.mcpManager.getServerConfigSnapshot();
+    nextConfig[name] = config;
+    storage.saveMcpServers(nextConfig);
+
+    this.mcpManager.setServers(nextConfig);
+    const result = await this.mcpManager.refresh();
+    this.syncMcpToolsToClaudeService();
+    return result;
+  }
+
+  async removeMcpServer(name: string): Promise<McpRefreshResult> {
+    const storage = this.getSessionStorageOrThrow();
+    const nextConfig = this.mcpManager.getServerConfigSnapshot();
+    delete nextConfig[name];
+    storage.saveMcpServers(nextConfig);
+
+    this.mcpManager.setServers(nextConfig);
+    const result = await this.mcpManager.refresh();
+    this.syncMcpToolsToClaudeService();
+    return result;
+  }
+
   private ensureInitialSession(): void {
     const storage = this.getSessionStorageOrThrow();
     const sessions = storage.listSessions();
@@ -121,5 +170,23 @@ export class MainProcessContext {
     }
 
     storage.switchSession(sessions[0].id);
+  }
+
+  private async initializeMcp(): Promise<void> {
+    const storage = this.getSessionStorageOrThrow();
+    const configuredServers = storage.loadMcpServers();
+    this.mcpManager.setServers(configuredServers);
+
+    try {
+      await this.mcpManager.refresh();
+      this.syncMcpToolsToClaudeService();
+    } catch (error) {
+      console.error('[mcp] initialize failed:', error);
+    }
+  }
+
+  private syncMcpToolsToClaudeService(): void {
+    const service = this.getClaudeServiceOrThrow();
+    service.setDynamicTools(this.mcpManager.getDynamicTools());
   }
 }

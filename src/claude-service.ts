@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { SessionStorage } from './session-storage';
-import { ToolExecutor } from './tool-executor';
+import { ToolExecutor, type DynamicToolRegistration } from './tool-executor';
 import type {
   ChatMessage,
   CompactHistoryResult,
@@ -155,6 +155,10 @@ export class ClaudeService {
 
   setToolPermissionCallback(callback: (tool: string, input: Record<string, unknown>) => Promise<boolean>): void {
     this.toolExecutor.setPermissionCallback(callback);
+  }
+
+  setDynamicTools(tools: DynamicToolRegistration[]): void {
+    this.toolExecutor.setDynamicTools(tools);
   }
 
   setWorkingDirectory(dir: string): void {

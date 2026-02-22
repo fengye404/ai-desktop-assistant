@@ -107,7 +107,7 @@ export function Sidebar({ width }: SidebarProps) {
       <div className="border-b border-border/45 px-4 pb-4 pt-12 no-drag">
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="h-2 w-2 rounded-full bg-[hsl(var(--cool-accent))] shadow-[0_0_12px_hsl(var(--cool-accent)/0.75)]" />
+            <div className="h-2 w-2 rounded-full bg-[hsl(var(--cool-accent))] shadow-[0_0_10px_hsl(var(--cool-accent)/0.5)]" />
             <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/72">Workspace</span>
           </div>
           <Layers2 className="h-3.5 w-3.5 text-muted-foreground/65" />

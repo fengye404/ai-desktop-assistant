@@ -3,6 +3,10 @@ import type {
   CompactHistoryResult,
   ConnectionTestResult,
   ElectronAPI,
+  McpRefreshResult,
+  McpServerConfig,
+  McpServerStatus,
+  McpToolInfo,
   ModelConfig,
   PathAutocompleteItem,
   Session,
@@ -153,6 +157,31 @@ export const electronApiClient = {
   configLoad: (): Promise<Partial<ModelConfig>> => {
     const api = getApiOrNull();
     return api ? api.configLoad() : Promise.resolve({});
+  },
+
+  mcpListServers: (): Promise<McpServerStatus[]> => {
+    const api = getApiOrNull();
+    return api ? api.mcpListServers() : Promise.resolve([]);
+  },
+
+  mcpListTools: (): Promise<McpToolInfo[]> => {
+    const api = getApiOrNull();
+    return api ? api.mcpListTools() : Promise.resolve([]);
+  },
+
+  mcpRefresh: (): Promise<McpRefreshResult> => {
+    const api = getApiOrNull();
+    return api ? api.mcpRefresh() : rejectUnavailable('mcpRefresh');
+  },
+
+  mcpUpsertServer: (name: string, config: McpServerConfig): Promise<McpRefreshResult> => {
+    const api = getApiOrNull();
+    return api ? api.mcpUpsertServer(name, config) : rejectUnavailable('mcpUpsertServer');
+  },
+
+  mcpRemoveServer: (name: string): Promise<McpRefreshResult> => {
+    const api = getApiOrNull();
+    return api ? api.mcpRemoveServer(name) : rejectUnavailable('mcpRemoveServer');
   },
 
   onToolApprovalRequest: (callback: (request: ToolApprovalRequest) => void) => {

@@ -68,10 +68,10 @@ export const ToolCallBlock = memo(function ToolCallBlock({
     <div className={cn(
       'my-2 rounded-xl border overflow-hidden shadow-[0_8px_24px_hsl(var(--background)/0.45)]',
       isPending
-        ? 'border-yellow-500/45 bg-yellow-500/10'
+        ? 'border-primary/45 bg-primary/10'
         : isQueued
-          ? 'border-slate-400/35 bg-slate-500/10'
-        : 'border-border/60 bg-secondary/35'
+          ? 'border-border/70 bg-muted/35'
+          : 'border-border/60 bg-secondary/35'
     )}>
       {/* Header - 可点击展开/折叠 */}
       <button
@@ -90,21 +90,21 @@ export const ToolCallBlock = memo(function ToolCallBlock({
         {/* 工具图标 */}
         <div className={cn(
           'w-7 h-7 rounded-lg flex items-center justify-center border border-border/40',
-          toolCall.status === 'pending' && 'bg-yellow-500/20',
-          toolCall.status === 'queued' && 'bg-slate-500/20',
-          toolCall.status === 'running' && 'bg-blue-500/20',
-          toolCall.status === 'success' && 'bg-green-500/20',
-          toolCall.status === 'error' && 'bg-red-500/20'
+          toolCall.status === 'pending' && 'bg-primary/20 border-primary/35',
+          toolCall.status === 'queued' && 'bg-muted/45',
+          toolCall.status === 'running' && 'bg-[hsl(var(--cool-accent)/0.18)] border-[hsl(var(--cool-accent)/0.35)]',
+          toolCall.status === 'success' && 'bg-primary/18 border-primary/32',
+          toolCall.status === 'error' && 'bg-destructive/20 border-destructive/35'
         )}>
           {isPending ? (
-            <AlertTriangle className='h-3.5 w-3.5 text-yellow-400' />
+            <AlertTriangle className='h-3.5 w-3.5 text-primary' />
           ) : (
             <Terminal className={cn(
               'h-3.5 w-3.5',
-              toolCall.status === 'queued' && 'text-slate-300',
-              toolCall.status === 'running' && 'text-blue-400',
-              toolCall.status === 'success' && 'text-green-400',
-              toolCall.status === 'error' && 'text-red-400'
+              toolCall.status === 'queued' && 'text-muted-foreground',
+              toolCall.status === 'running' && 'text-[hsl(var(--cool-accent))]',
+              toolCall.status === 'success' && 'text-primary',
+              toolCall.status === 'error' && 'text-destructive'
             )} />
           )}
         </div>
@@ -112,13 +112,13 @@ export const ToolCallBlock = memo(function ToolCallBlock({
         {/* 工具名称和参数 */}
         <div className="flex-1 min-w-0">
           {isPending && (
-            <span className='text-[11px] uppercase tracking-[0.1em] text-yellow-300 mr-2'>Pending</span>
+            <span className='mr-2 text-[11px] uppercase tracking-[0.1em] text-primary/95'>Pending</span>
           )}
           {isQueued && !isPending && (
-            <span className='text-[11px] uppercase tracking-[0.1em] text-slate-300 mr-2'>Queued</span>
+            <span className='mr-2 text-[11px] uppercase tracking-[0.1em] text-muted-foreground'>Queued</span>
           )}
           {isInputStreaming && !isPending && (
-            <span className='text-[11px] uppercase tracking-[0.1em] text-blue-300 mr-2'>Streaming</span>
+            <span className='mr-2 text-[11px] uppercase tracking-[0.1em] text-[hsl(var(--cool-accent))]'>Streaming</span>
           )}
           <span className='text-sm font-medium text-foreground'>{displayName}</span>
           {mainParam && (
@@ -129,7 +129,7 @@ export const ToolCallBlock = memo(function ToolCallBlock({
             </span>
           )}
           {isInputStreaming && (
-            <span className='ml-2 text-[11px] text-blue-300/80'>
+            <span className='ml-2 text-[11px] text-[hsl(var(--cool-accent)/0.86)]'>
               已接收 {streamedInputLength} 字符
             </span>
           )}
@@ -138,16 +138,16 @@ export const ToolCallBlock = memo(function ToolCallBlock({
         {/* 状态图标 */}
         <div className='flex items-center gap-2'>
           {toolCall.status === 'queued' && (
-            <Loader2 className='h-4 w-4 text-slate-300' />
+            <Loader2 className='h-4 w-4 text-muted-foreground' />
           )}
           {toolCall.status === 'running' && (
-            <Loader2 className='h-4 w-4 text-blue-400 animate-spin' />
+            <Loader2 className='h-4 w-4 text-[hsl(var(--cool-accent))] animate-spin' />
           )}
           {toolCall.status === 'success' && (
-            <CheckCircle2 className='h-4 w-4 text-green-400' />
+            <CheckCircle2 className='h-4 w-4 text-primary' />
           )}
           {toolCall.status === 'error' && (
-            <XCircle className='h-4 w-4 text-red-400' />
+            <XCircle className='h-4 w-4 text-destructive' />
           )}
         </div>
       </button>
@@ -160,7 +160,7 @@ export const ToolCallBlock = memo(function ToolCallBlock({
             <div className='text-xs font-medium text-muted-foreground mb-1.5'>
               输入参数
               {isInputStreaming && (
-                <span className='ml-2 text-[11px] text-blue-300/90'>参数生成中...</span>
+                <span className='ml-2 text-[11px] text-[hsl(var(--cool-accent)/0.9)]'>参数生成中...</span>
               )}
             </div>
             <pre className={cn(
@@ -223,7 +223,7 @@ export const ToolCallBlock = memo(function ToolCallBlock({
                     e.stopPropagation();
                     onApprove?.(toolCall.id);
                   }}
-                  className='gap-1.5 bg-[linear-gradient(135deg,#3fcb8e,#2a9d7a)] text-black/85 hover:opacity-90'
+                  className='gap-1.5 shadow-primary/20'
                 >
                   <Check className='h-3.5 w-3.5' />
                   允许
@@ -241,7 +241,7 @@ export const ToolCallBlock = memo(function ToolCallBlock({
               <pre className={cn(
                 'text-xs rounded-lg p-2 overflow-x-auto max-h-[300px] border border-border/40',
                 toolCall.status === 'error'
-                  ? 'bg-red-500/10 text-red-300'
+                  ? 'border-destructive/35 bg-destructive/12 text-destructive'
                   : 'bg-background/55 text-foreground/80'
               )}>
                 {toolCall.error || toolCall.output || '(无输出)'}

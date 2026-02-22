@@ -1,39 +1,39 @@
 @import "tailwindcss";
 
 :root {
-  --background: 225 24% 7%;
-  --foreground: 220 18% 94%;
+  --background: 224 21% 8%;
+  --foreground: 220 16% 93%;
 
-  --card: 224 20% 10%;
-  --card-foreground: 220 18% 94%;
+  --card: 223 18% 11%;
+  --card-foreground: 220 16% 93%;
 
-  --popover: 224 20% 10%;
-  --popover-foreground: 220 18% 94%;
+  --popover: 223 18% 11%;
+  --popover-foreground: 220 16% 93%;
 
-  --primary: 30 95% 62%;
-  --primary-foreground: 222 30% 8%;
-  --cool-accent: 200 95% 66%;
+  --primary: 31 80% 59%;
+  --primary-foreground: 222 28% 10%;
+  --cool-accent: 199 78% 62%;
 
-  --secondary: 223 18% 14%;
-  --secondary-foreground: 220 18% 94%;
+  --secondary: 223 15% 15%;
+  --secondary-foreground: 220 16% 93%;
 
-  --muted: 223 16% 17%;
-  --muted-foreground: 220 12% 66%;
+  --muted: 223 13% 18%;
+  --muted-foreground: 220 11% 68%;
 
-  --accent: 223 18% 14%;
-  --accent-foreground: 220 18% 94%;
+  --accent: 223 15% 15%;
+  --accent-foreground: 220 16% 93%;
 
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 220 18% 94%;
+  --destructive: 3 64% 54%;
+  --destructive-foreground: 220 16% 94%;
 
-  --border: 224 16% 22%;
-  --input: 224 16% 15%;
-  --ring: 30 95% 62%;
+  --border: 224 13% 24%;
+  --input: 224 13% 16%;
+  --ring: 31 80% 59%;
   --radius: 0.9rem;
 
-  --user-bubble: 28 55% 16%;
-  --assistant-bubble: 223 18% 13%;
-  --sidebar-bg: 225 26% 6%;
+  --user-bubble: 29 42% 17%;
+  --assistant-bubble: 223 15% 14%;
+  --sidebar-bg: 225 21% 7%;
 }
 
 * {
@@ -52,9 +52,9 @@ body {
   font-family: 'SF Pro Text', 'Avenir Next', 'IBM Plex Sans', 'Segoe UI', sans-serif;
   letter-spacing: 0.01em;
   background:
-    radial-gradient(circle at 8% 12%, hsl(var(--primary) / 0.08), transparent 30%),
-    radial-gradient(circle at 92% 88%, hsl(var(--cool-accent) / 0.11), transparent 35%),
-    linear-gradient(180deg, hsl(225 30% 7%), hsl(225 26% 5%));
+    radial-gradient(circle at 8% 12%, hsl(var(--primary) / 0.055), transparent 30%),
+    radial-gradient(circle at 92% 88%, hsl(var(--cool-accent) / 0.08), transparent 35%),
+    linear-gradient(180deg, hsl(224 22% 8%), hsl(224 20% 6%));
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -65,8 +65,8 @@ body::before {
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(hsl(220 30% 80% / 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, hsl(220 30% 80% / 0.03) 1px, transparent 1px);
+    linear-gradient(hsl(220 24% 78% / 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(220 24% 78% / 0.022) 1px, transparent 1px);
   background-size: 26px 26px;
   mask-image: radial-gradient(circle at center, black 45%, transparent 100%);
 }
@@ -92,11 +92,11 @@ body::before {
 .sidebar-resizer:hover > div,
 .sidebar-resizer:focus-visible > div,
 .sidebar-resizer.is-resizing > div {
-  background: hsl(var(--primary) / 0.55);
+  background: hsl(var(--primary) / 0.42);
 }
 
 .sidebar-resizer:focus-visible {
-  box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.28);
+  box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.22);
 }
 
 /* Radix ScrollArea: hide native scrollbar and rely on custom thumb */
@@ -111,20 +111,20 @@ body::before {
 /* Main surfaces */
 .sidebar {
   background:
-    linear-gradient(180deg, hsl(var(--sidebar-bg) / 0.92), hsl(225 25% 5% / 0.96)),
-    radial-gradient(circle at top left, hsl(var(--cool-accent) / 0.06), transparent 45%);
+    linear-gradient(180deg, hsl(var(--sidebar-bg) / 0.92), hsl(225 22% 6% / 0.96)),
+    radial-gradient(circle at top left, hsl(var(--cool-accent) / 0.045), transparent 45%);
 }
 
 .chat-canvas {
   background:
-    radial-gradient(circle at top right, hsl(var(--cool-accent) / 0.06), transparent 32%),
-    radial-gradient(circle at top left, hsl(var(--primary) / 0.07), transparent 28%),
+    radial-gradient(circle at top right, hsl(var(--cool-accent) / 0.045), transparent 32%),
+    radial-gradient(circle at top left, hsl(var(--primary) / 0.05), transparent 28%),
     linear-gradient(180deg, hsl(var(--background) / 0.9), hsl(var(--background) / 0.98));
 }
 
 .composer-shell {
   background:
-    linear-gradient(160deg, hsl(var(--secondary) / 0.8), hsl(222 18% 12% / 0.92));
+    linear-gradient(160deg, hsl(var(--secondary) / 0.8), hsl(222 16% 13% / 0.92));
   box-shadow:
     inset 0 1px 0 hsl(0 0% 100% / 0.05),
     0 14px 30px hsl(var(--background) / 0.5);
@@ -133,20 +133,20 @@ body::before {
 .input-glow:focus-within,
 .composer-shell:focus-within {
   box-shadow:
-    0 0 0 2px hsl(var(--primary) / 0.2),
+    0 0 0 2px hsl(var(--primary) / 0.16),
     0 14px 30px hsl(var(--background) / 0.5);
 }
 
 /* Message bubbles */
 .user-message {
   background:
-    linear-gradient(135deg, hsl(var(--user-bubble)), hsl(24 48% 19%));
+    linear-gradient(135deg, hsl(var(--user-bubble)), hsl(26 36% 20%));
   border: 1px solid hsl(var(--primary) / 0.3);
 }
 
 .assistant-message {
   background:
-    linear-gradient(135deg, hsl(var(--assistant-bubble)), hsl(223 17% 11%));
+    linear-gradient(135deg, hsl(var(--assistant-bubble)), hsl(223 15% 12%));
   border: 1px solid hsl(var(--border) / 0.95);
   box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.03);
 }
@@ -218,11 +218,11 @@ pre code {
 
 .session-item.active {
   background:
-    linear-gradient(180deg, hsl(var(--primary) / 0.15), hsl(var(--accent) / 0.76));
+    linear-gradient(180deg, hsl(var(--primary) / 0.12), hsl(var(--accent) / 0.8));
   box-shadow:
     inset 0 1px 0 hsl(0 0% 100% / 0.06),
-    inset 0 0 0 1px hsl(var(--primary) / 0.42),
-    inset 2px 0 0 hsl(var(--primary) / 0.45);
+    inset 0 0 0 1px hsl(var(--primary) / 0.34),
+    inset 2px 0 0 hsl(var(--primary) / 0.38);
 }
 
 .session-item:focus-visible {
@@ -272,6 +272,23 @@ pre code {
 
 .message-enter {
   animation: fadeIn 0.26s ease-out;
+}
+
+/* Settings panels: progressive reveal */
+@keyframes settingsPanelIn {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.995);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.settings-panel-enter {
+  animation: settingsPanelIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
 }
 
 /* Thinking text */

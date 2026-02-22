@@ -16,8 +16,8 @@ function installGlobalRuntimeHandlers() {
 
 function renderFatalBootstrapError(message: string) {
   document.body.innerHTML = `
-    <div style="height:100vh;display:flex;align-items:center;justify-content:center;background:#0f1117;color:#f7f8fb;padding:24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-      <div style="max-width:720px;width:100%;border:1px solid rgba(255,102,102,0.45);background:rgba(255,82,82,0.12);border-radius:14px;padding:20px;">
+    <div style="height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#101219,#0E1016);color:#EAECF0;padding:24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+      <div style="max-width:720px;width:100%;border:1px solid rgba(234,153,67,0.42);background:linear-gradient(160deg,rgba(234,153,67,0.14),rgba(23,26,33,0.96));border-radius:14px;padding:20px;">
         <div style="font-weight:600;font-size:18px;">Renderer 启动失败</div>
         <div style="margin-top:10px;line-height:1.6;font-size:14px;opacity:0.95;">${message}</div>
       </div>

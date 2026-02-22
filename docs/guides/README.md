@@ -7,6 +7,7 @@
 - [启动黑屏排查指南（2026-02-21）](./startup-black-screen-troubleshooting-2026-02-21.md)
 - [页面展示与性能优化记录（2026-02-21）](./ui-performance-optimization-2026-02-21.md)
 - [UI 视觉修复记录（2026-02-21）](./ui-visual-polish-2026-02-21.md)
+- [主题色规范（2026-02-22）](./theme-color-spec-2026-02-22.md)
 
 ## 快速开始
 

@@ -31,8 +31,8 @@ export function ToolApprovalDialog() {
       <DialogContent className='sm:max-w-[500px]'>
         <DialogHeader>
           <div className='flex items-center gap-3'>
-            <div className='w-10 h-10 rounded-xl bg-yellow-500/15 flex items-center justify-center'>
-              <Shield className='h-5 w-5 text-yellow-500' />
+            <div className='w-10 h-10 rounded-xl border border-primary/35 bg-[linear-gradient(135deg,hsl(var(--primary)/0.3),hsl(var(--cool-accent)/0.24))] flex items-center justify-center shadow-[0_8px_18px_hsl(var(--background)/0.28)]'>
+              <Shield className='h-5 w-5 text-foreground' />
             </div>
             <div>
               <DialogTitle>工具权限请求</DialogTitle>
@@ -73,7 +73,7 @@ export function ToolApprovalDialog() {
           </Button>
           <Button
             onClick={() => approveToolCall(request.id)}
-            className='gap-2 bg-green-600 hover:bg-green-700'
+            className='gap-2 shadow-primary/20'
           >
             <Check className='h-4 w-4' />
             允许

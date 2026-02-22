@@ -23,8 +23,8 @@ function openMainWindow(): void {
   });
 }
 
-app.whenReady().then(() => {
-  context.initializeServices();
+app.whenReady().then(async () => {
+  await context.initializeServices();
   openMainWindow();
 
   app.on('activate', () => {

@@ -217,6 +217,64 @@ export interface PathAutocompleteItem {
 }
 
 /**
+ * MCP server transport type
+ */
+export type McpServerTransport = 'stdio' | 'streamable-http' | 'sse';
+
+/**
+ * MCP server configuration
+ */
+export interface McpServerConfig {
+  transport?: McpServerTransport;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  headers?: Record<string, string>;
+  cwd?: string;
+  url?: string;
+  enabled?: boolean;
+  timeoutMs?: number;
+}
+
+/**
+ * MCP servers configuration map
+ */
+export type McpServersConfig = Record<string, McpServerConfig>;
+
+/**
+ * MCP server runtime status
+ */
+export interface McpServerStatus {
+  name: string;
+  transport: McpServerTransport;
+  enabled: boolean;
+  connected: boolean;
+  toolCount: number;
+  lastError?: string;
+  command?: string;
+  args?: string[];
+  url?: string;
+}
+
+/**
+ * MCP tool metadata exposed to renderer
+ */
+export interface McpToolInfo {
+  alias: string;
+  originalName: string;
+  server: string;
+  description: string;
+}
+
+/**
+ * MCP refresh operation result
+ */
+export interface McpRefreshResult {
+  servers: McpServerStatus[];
+  tools: McpToolInfo[];
+}
+
+/**
  * IPC channel names for type safety
  */
 export const IPC_CHANNELS = {
@@ -244,6 +302,13 @@ export const IPC_CHANNELS = {
   // Config management
   CONFIG_SAVE: 'config-save',
   CONFIG_LOAD: 'config-load',
+
+  // MCP management
+  MCP_LIST_SERVERS: 'mcp-list-servers',
+  MCP_LIST_TOOLS: 'mcp-list-tools',
+  MCP_REFRESH: 'mcp-refresh',
+  MCP_UPSERT_SERVER: 'mcp-upsert-server',
+  MCP_REMOVE_SERVER: 'mcp-remove-server',
 
   // Tool system
   TOOL_APPROVAL_REQUEST: 'tool-approval-request',
@@ -282,6 +347,13 @@ export interface ElectronAPI {
   // Config management
   configSave: (config: Partial<ModelConfig>) => Promise<boolean>;
   configLoad: () => Promise<Partial<ModelConfig>>;
+
+  // MCP management
+  mcpListServers: () => Promise<McpServerStatus[]>;
+  mcpListTools: () => Promise<McpToolInfo[]>;
+  mcpRefresh: () => Promise<McpRefreshResult>;
+  mcpUpsertServer: (name: string, config: McpServerConfig) => Promise<McpRefreshResult>;
+  mcpRemoveServer: (name: string) => Promise<McpRefreshResult>;
 
   // Tool system
   onToolApprovalRequest: (callback: (request: ToolApprovalRequest) => void) => void;
