@@ -1,6 +1,6 @@
 {
   "name": "ai-desktop-assistant",
-  "version": "1.2.0",
+  "version": "1.6.9",
   "description": "A cross-platform AI desktop assistant supporting multiple AI providers",
   "main": "dist/main.js",
   "scripts": {

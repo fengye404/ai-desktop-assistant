@@ -42,7 +42,7 @@ npm start
 
 ```
 API 类型: Anthropic API (Anthropic)
-模型: gpt-4o-mini
+模型: claude-opus-4-6
 API Key: sk-ant-xxxxx
 Base URL: (留空使用官方)
 ```

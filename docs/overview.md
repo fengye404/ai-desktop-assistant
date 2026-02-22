@@ -5,12 +5,13 @@
 AI Desktop Assistant 是一款基于 Electron + TypeScript 构建的跨平台桌面应用程序，提供统一的 AI 对话界面，支持两种 API 格式。
 
 **核心特性：**
-- **双 API 格式支持**：Claude API 和 OpenAI 兼容 API
+- **多提供商模型接入**：支持 Anthropic 和 OpenAI 兼容 API
 - **OpenAI 兼容生态**：支持 OpenAI、Ollama、DeepSeek、Moonshot、智谱 AI 等所有 OpenAI 兼容服务
-- **流式响应**：实时显示 AI 生成内容
-- **响应取消**：支持中断正在进行的响应
+- **流式响应渲染**：实时显示 AI 生成内容
+- **工具系统**：9 个内置工具 + MCP 协议支持动态工具扩展
+- **会话管理**：SQLite 持久化存储、多会话切换
 - **安全存储**：使用 Electron `safeStorage` 加密 API Key
-- **现代 UI**：Glassmorphism 设计风格
+- **现代 UI**：React 19 + Tailwind CSS v4 + shadcn/ui (Glassmorphism 设计风格)
 
 ## 技术栈
 
@@ -18,9 +19,13 @@ AI Desktop Assistant 是一款基于 Electron + TypeScript 构建的跨平台桌
 |------|------|
 | 运行时 | Electron 28 |
 | 语言 | TypeScript 5.3 |
+| 前端框架 | React 19 |
+| 构建工具 | Vite 7 |
+| CSS 框架 | Tailwind CSS v4 |
+| UI 组件 | shadcn/ui (Radix UI) |
+| 状态管理 | Zustand |
 | AI SDK | @anthropic-ai/sdk, openai |
-| 构建工具 | tsc (TypeScript Compiler) |
-| 代码质量 | ESLint, Prettier |
+| 数据库 | SQLite (better-sqlite3) |
 | 打包工具 | electron-builder |
 
 ## 项目结构
@@ -28,16 +33,45 @@ AI Desktop Assistant 是一款基于 Electron + TypeScript 构建的跨平台桌
 ```
 ai-desktop-assistant/
 ├── src/
-│   ├── main.ts              # Electron 主进程
+│   ├── main.ts              # Electron 主进程入口
 │   ├── preload.ts           # 预加载脚本 (IPC 桥接)
-│   ├── renderer.ts          # 渲染进程 (前端逻辑)
+│   ├── renderer.ts          # 渲染进程桥接
 │   ├── claude-service.ts    # AI 服务层 (多提供商支持)
+│   ├── session-storage.ts   # 会话存储服务 (SQLite)
+│   ├── tool-executor.ts     # 工具执行器 (9 个内置工具)
 │   ├── types/
 │   │   └── index.ts         # 集中类型定义
-│   └── utils/
-│       └── errors.ts        # 自定义错误类
+│   ├── utils/
+│   │   └── errors.ts        # 自定义错误类
+│   ├── ai/                  # AI 提供商适配器
+│   │   ├── providers/       # Anthropic/OpenAI 流式适配器
+│   │   └── provider-streams.ts
+│   ├── main-process/        # 主进程模块化拆分
+│   │   ├── ipc/             # IPC 处理器分域
+│   │   ├── mcp/             # MCP 协议实现
+│   │   └── chat-input/      # 聊天输入处理
+│   └── renderer/            # React 前端应用
+│       ├── main.tsx         # React 入口
+│       ├── App.tsx          # 根组件
+│       ├── components/      # UI 组件
+│       │   ├── ui/          # shadcn/ui 基础组件
+│       │   ├── Sidebar.tsx
+│       │   ├── ChatArea.tsx
+│       │   ├── SettingsDialog.tsx
+│       │   ├── ToolCallBlock.tsx
+│       │   └── MarkdownRenderer.tsx
+│       ├── stores/          # Zustand 状态管理
+│       │   ├── config-store.ts
+│       │   ├── session-store.ts
+│       │   └── chat-store.ts
+│       ├── services/        # API 客户端封装
+│       │   └── electron-api-client.ts
+│       ├── lib/
+│       │   └── utils.ts     # 工具函数
+│       └── styles/
+│           └── globals.css  # 全局样式
 ├── public/
-│   └── index.html           # UI 模板 (内含 CSS)
+│   └── index.html           # UI 模板
 ├── dist/                    # 编译输出
 ├── release/                 # 打包输出
 ├── docs/                    # 项目文档
@@ -195,21 +229,55 @@ Base URL: https://open.bigmodel.cn/api/paas/v4
 
 ### 渲染进程 → 主进程
 
+#### 消息相关
+
 | 通道 | 参数 | 返回值 | 说明 |
 |------|------|--------|------|
 | `send-message` | message, systemPrompt? | string | 发送消息并获取完整响应 |
 | `send-message-stream` | message, systemPrompt? | boolean | 发送消息并流式接收响应 |
 | `abort-stream` | - | void | 取消当前流式响应 |
+| `clear-history` | - | void | 清除对话历史 |
+| `get-history` | - | ChatMessage[] | 获取对话历史 |
+| `compact-history` | - | CompactHistoryResult | 压缩对话历史 |
+
+#### 配置相关
+
+| 通道 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
 | `set-model-config` | Partial\<ModelConfig\> | boolean | 设置模型配置 |
+| `config-save` | Partial\<ModelConfig\> | boolean | 保存配置到持久化存储 |
+| `config-load` | - | Partial\<ModelConfig\> | 从持久化存储加载配置 |
 | `test-connection` | - | {success, message} | 测试 API 连接 (15秒超时) |
 | `encrypt-data` | data | string | 加密敏感数据 |
 | `decrypt-data` | encryptedData | string | 解密敏感数据 |
+
+#### 会话管理
+
+| 通道 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
+| `session-list` | - | SessionMeta[] | 获取会话列表 |
+| `session-get` | id | Session \| null | 获取指定会话 |
+| `session-create` | title? | Session | 创建新会话 |
+| `session-delete` | id | boolean | 删除会话 |
+| `session-switch` | id | Session \| null | 切换到指定会话 |
+| `session-rename` | id, title | boolean | 重命名会话 |
+
+#### MCP 管理
+
+| 通道 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
+| `mcp-list-servers` | - | McpServerStatus[] | 获取 MCP 服务器列表 |
+| `mcp-list-tools` | - | McpToolInfo[] | 获取 MCP 工具列表 |
+| `mcp-refresh` | - | McpRefreshResult | 刷新 MCP 状态 |
+| `mcp-upsert-server` | name, config | McpRefreshResult | 添加或更新 MCP 服务器 |
+| `mcp-remove-server` | name | McpRefreshResult | 移除 MCP 服务器 |
 
 ### 主进程 → 渲染进程
 
 | 通道 | 参数 | 说明 |
 |------|------|------|
 | `stream-chunk` | {type, content} | 流式响应数据块 |
+| `tool-approval-request` | ToolApprovalRequest | 工具执行审批请求 |
 
 ## 数据流
 
@@ -319,10 +387,11 @@ npm run dist:win
 
 ## 扩展方向
 
-1. **会话管理**：支持多会话和历史记录
+1. **会话管理**：✅ 已实现 SQLite 持久化存储、多会话切换
 2. **系统提示词**：可自定义系统提示词模板
 3. **消息导出**：导出对话为 Markdown/JSON
 4. **快捷键**：全局快捷键唤醒
 5. **托盘图标**：最小化到系统托盘
 6. **多语言**：i18n 国际化支持
-7. **代码高亮**：集成 highlight.js 或 prism.js
+7. **代码高亮**：✅ 已集成 react-syntax-highlighter
+8. **MCP 协议**：✅ 已实现 Stdio/SSE/HTTP 三种传输方式

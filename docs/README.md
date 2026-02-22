@@ -65,15 +65,23 @@ npm run dev
 ```
 ai-desktop-assistant/
 ├── src/
-│   ├── main.ts              # Electron 主进程
+│   ├── main.ts              # Electron 主进程入口
 │   ├── preload.ts           # 预加载脚本 (IPC 桥接)
+│   ├── renderer.ts          # 渲染进程桥接
 │   ├── claude-service.ts    # AI 服务层 (多提供商支持)
 │   ├── session-storage.ts   # 会话存储服务 (SQLite)
-│   ├── tool-executor.ts     # 工具执行器
+│   ├── tool-executor.ts     # 工具执行器 (9 个内置工具)
 │   ├── types/
 │   │   └── index.ts         # 集中类型定义
 │   ├── utils/
 │   │   └── errors.ts        # 自定义错误类
+│   ├── ai/                  # AI 提供商适配器
+│   │   ├── providers/       # Anthropic/OpenAI 流式适配器
+│   │   └── provider-streams.ts
+│   ├── main-process/        # 主进程模块化拆分
+│   │   ├── ipc/             # IPC 处理器分域
+│   │   ├── mcp/             # MCP 协议实现
+│   │   └── chat-input/      # 聊天输入处理
 │   └── renderer/            # React 前端应用
 │       ├── main.tsx         # React 入口
 │       ├── App.tsx          # 根组件
@@ -88,6 +96,8 @@ ai-desktop-assistant/
 │       │   ├── config-store.ts
 │       │   ├── session-store.ts
 │       │   └── chat-store.ts
+│       ├── services/        # API 客户端封装
+│       │   └── electron-api-client.ts
 │       ├── lib/
 │       │   └── utils.ts     # 工具函数
 │       └── styles/
