@@ -9,6 +9,7 @@ import type {
   McpServerStatus,
   McpToolInfo,
   ModelConfig,
+  ModelServicesConfig,
   PathAutocompleteItem,
   RewindHistoryResult,
   Session,
@@ -156,14 +157,14 @@ export const electronApiClient = {
     return api ? api.sessionRename(id, title) : Promise.resolve(false);
   },
 
-  configSave: (config: Partial<ModelConfig>): Promise<boolean> => {
+  configSave: (config: ModelServicesConfig): Promise<boolean> => {
     const api = getApiOrNull();
     return api ? api.configSave(config) : Promise.resolve(false);
   },
 
-  configLoad: (): Promise<Partial<ModelConfig>> => {
+  configLoad: (): Promise<ModelServicesConfig> => {
     const api = getApiOrNull();
-    return api ? api.configLoad() : Promise.resolve({});
+    return api ? api.configLoad() : Promise.resolve({ activeInstanceId: null, instances: [] });
   },
 
   mcpListServers: (): Promise<McpServerStatus[]> => {

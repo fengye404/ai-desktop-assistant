@@ -171,6 +171,12 @@ function SecondaryMenu<T extends string>({
 
 export function SettingsDialog() {
   const {
+    instances,
+    activeInstanceId,
+    setActiveInstance,
+    createInstance,
+    removeInstance,
+    renameInstance,
     isSettingsOpen,
     setSettingsOpen,
     provider,
@@ -331,6 +337,10 @@ export function SettingsDialog() {
     () => mcpServers.filter((server) => server.enabled).length,
     [mcpServers],
   );
+  const activeModelInstance = useMemo(
+    () => instances.find((item) => item.id === activeInstanceId) ?? instances[0] ?? null,
+    [instances, activeInstanceId],
+  );
   const connectedMcpServers = useMemo(
     () => mcpServers.filter((server) => server.connected).length,
     [mcpServers],
@@ -480,11 +490,74 @@ export function SettingsDialog() {
                           </p>
                         </div>
                         <span className="rounded-full border border-border/65 bg-background/50 px-3 py-1 text-xs text-muted-foreground">
-                          {provider === 'anthropic' ? 'Anthropic' : 'OpenAI Compatible'}
+                          {activeModelInstance?.name || (provider === 'anthropic' ? 'Anthropic' : 'OpenAI Compatible')}
                         </span>
                       </div>
 
                       <div className="space-y-4">
+                        <div className="space-y-2">
+                          <label htmlFor="settings-instance-select" className="text-sm font-medium text-foreground/92">
+                            模型实例
+                          </label>
+                          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
+                            <select
+                              id="settings-instance-select"
+                              value={activeModelInstance?.id || ''}
+                              onChange={(e) => setActiveInstance(e.target.value)}
+                              className={selectClassName}
+                            >
+                              {instances.map((item) => (
+                                <option key={item.id} value={item.id}>
+                                  {item.name}
+                                </option>
+                              ))}
+                            </select>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              onClick={createInstance}
+                              className="h-10 w-10 border-border/65 bg-background/40 hover:bg-secondary/70"
+                              title="新增实例"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              disabled={!activeModelInstance || instances.length <= 1}
+                              onClick={() => {
+                                if (activeModelInstance) {
+                                  removeInstance(activeModelInstance.id);
+                                }
+                              }}
+                              className="h-10 w-10 border-border/65 bg-background/40 hover:bg-destructive/20 hover:text-destructive-foreground"
+                              title="删除当前实例"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">可同时配置多个服务实例，保存后写入 SQLite。</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label htmlFor="settings-instance-name" className="text-sm font-medium text-foreground/92">
+                            实例名称
+                          </label>
+                          <Input
+                            id="settings-instance-name"
+                            value={activeModelInstance?.name || ''}
+                            onChange={(e) => {
+                              if (activeModelInstance) {
+                                renameInstance(activeModelInstance.id, e.target.value);
+                              }
+                            }}
+                            placeholder="例如: OpenAI 官方 / 阿里云 / Cloud"
+                            className={fieldClassName}
+                          />
+                        </div>
+
                         <div className="space-y-2">
                           <label htmlFor="settings-provider" className="text-sm font-medium text-foreground/92">
                             AI 提供商
@@ -596,9 +669,9 @@ export function SettingsDialog() {
 
                     <div className="grid gap-2.5 sm:grid-cols-2">
                       <div className="rounded-xl border border-border/60 bg-secondary/25 px-3 py-2.5">
-                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">当前提供商</p>
+                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">当前实例</p>
                         <p className="mt-1 text-sm font-medium text-foreground/92">
-                          {provider === 'anthropic' ? 'Anthropic' : 'OpenAI Compatible'}
+                          {activeModelInstance?.name || '-'}
                         </p>
                       </div>
                       <div className="rounded-xl border border-border/60 bg-secondary/25 px-3 py-2.5">

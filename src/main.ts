@@ -10,6 +10,23 @@ const useViteDevServer = process.env.VITE_DEV_SERVER === 'true';
 const context = new MainProcessContext();
 registerIpcHandlers(context);
 
+function applyDockIconIfNeeded(): void {
+  if (process.platform !== 'darwin') {
+    return;
+  }
+
+  const desktopIconPath = resolveDesktopIconPath();
+  if (!desktopIconPath) {
+    return;
+  }
+
+  try {
+    app.dock.setIcon(desktopIconPath);
+  } catch (error) {
+    console.error('[main] failed to set dock icon:', error);
+  }
+}
+
 function openMainWindow(): void {
   const window = createMainWindow({ useViteDevServer });
   context.setMainWindow(window);
@@ -25,14 +42,11 @@ function openMainWindow(): void {
 }
 
 app.whenReady().then(async () => {
-  await context.initializeServices();
+  // Set Dock icon as early as possible to avoid showing Electron default icon
+  // while service initialization is still running.
+  applyDockIconIfNeeded();
 
-  if (process.platform === 'darwin') {
-    const desktopIconPath = resolveDesktopIconPath();
-    if (desktopIconPath) {
-      app.dock.setIcon(desktopIconPath);
-    }
-  }
+  await context.initializeServices();
 
   openMainWindow();
 

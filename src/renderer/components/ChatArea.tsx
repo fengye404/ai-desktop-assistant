@@ -11,8 +11,6 @@ import {
   FolderOpen,
   FileCode2,
   ImagePlus,
-  ChevronLeft,
-  ChevronRight,
   RotateCcw,
   X,
 } from 'lucide-react';
@@ -134,26 +132,17 @@ function hasImageInDataTransfer(dataTransfer: DataTransfer): boolean {
 }
 
 function collectImageFiles(dataTransfer: DataTransfer): File[] {
-  const deduped = new Map<string, File>();
-
   const itemFiles = Array.from(dataTransfer.items ?? [])
     .filter((item) => item.kind === 'file')
     .map((item) => item.getAsFile())
     .filter((file): file is File => Boolean(file))
     .filter((file) => isLikelyImageFile(file));
 
-  for (const file of itemFiles) {
-    const key = `${file.name}|${file.size}|${file.lastModified}`;
-    deduped.set(key, file);
+  if (itemFiles.length > 0) {
+    return itemFiles;
   }
 
-  const directFiles = Array.from(dataTransfer.files ?? []).filter((file) => isLikelyImageFile(file));
-  for (const file of directFiles) {
-    const key = `${file.name}|${file.size}|${file.lastModified}`;
-    deduped.set(key, file);
-  }
-
-  return Array.from(deduped.values());
+  return Array.from(dataTransfer.files ?? []).filter((file) => isLikelyImageFile(file));
 }
 
 function pickAutocompleteSelectedIndex(
@@ -542,27 +531,14 @@ export function ChatArea() {
     }
 
     const existingImages = pastedImagesRef.current;
-    const existingKeys = new Set(existingImages.map((image) => `${image.name}|${image.sizeBytes}`));
-    const dedupedFiles: File[] = [];
-    let skippedDuplicates = 0;
-    for (const file of normalizedFiles) {
-      const key = `${file.name || '未命名图片'}|${file.size}`;
-      if (existingKeys.has(key)) {
-        skippedDuplicates += 1;
-        continue;
-      }
-      existingKeys.add(key);
-      dedupedFiles.push(file);
-    }
-
     const remainingSlots = Math.max(0, MAX_ATTACHMENT_IMAGES - existingImages.length);
     if (remainingSlots <= 0) {
       setComposerHint(`最多添加 ${MAX_ATTACHMENT_IMAGES} 张图片，请先移除部分附件。`);
       return;
     }
 
-    const selectedFiles = dedupedFiles.slice(0, remainingSlots);
-    const skippedByLimit = Math.max(0, dedupedFiles.length - selectedFiles.length);
+    const selectedFiles = normalizedFiles.slice(0, remainingSlots);
+    const skippedByLimit = Math.max(0, normalizedFiles.length - selectedFiles.length);
     const nextImages: PastedImageDraft[] = [];
     let skippedOversizeCount = 0;
     let hasReadFailure = false;
@@ -601,9 +577,6 @@ export function ChatArea() {
     if (skippedOversizeCount > 0) {
       hintParts.push(`${skippedOversizeCount} 张超过 ${formatSizeLabel(MAX_ATTACHMENT_IMAGE_SIZE_BYTES)} 已跳过`);
     }
-    if (skippedDuplicates > 0) {
-      hintParts.push(`${skippedDuplicates} 张重复图片已跳过`);
-    }
     if (hasReadFailure) {
       hintParts.push('部分图片读取失败');
     }
@@ -616,37 +589,6 @@ export function ChatArea() {
       textareaRef.current?.focus();
     });
   }, [readImageAsDataUrl]);
-
-  const handleMovePastedImage = useCallback((id: string, direction: 'left' | 'right') => {
-    setPastedImages((previous) => {
-      const index = previous.findIndex((image) => image.id === id);
-      if (index < 0) return previous;
-
-      const targetIndex = direction === 'left' ? index - 1 : index + 1;
-      if (targetIndex < 0 || targetIndex >= previous.length) {
-        return previous;
-      }
-
-      const next = [...previous];
-      const current = next[index];
-      const target = next[targetIndex];
-      if (!current || !target) {
-        return previous;
-      }
-
-      next[index] = target;
-      next[targetIndex] = current;
-      return next;
-    });
-  }, []);
-
-  const handleClearPastedImages = useCallback(() => {
-    if (pastedImages.length === 0) {
-      return;
-    }
-    setPastedImages([]);
-    setComposerHint('已清空图片附件。');
-  }, [pastedImages.length]);
 
   const handleRemovePastedImage = useCallback((id: string) => {
     setPastedImages((previous) => previous.filter((image) => image.id !== id));
@@ -1065,23 +1007,21 @@ export function ChatArea() {
               >
                 <div className="px-4 py-3.5 rounded-2xl max-w-[82%] user-message rounded-br-md shadow-[0_12px_30px_hsl(var(--primary)/0.12)]">
                   {msg.attachments && msg.attachments.length > 0 && (
-                    <div className="mb-2.5 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    <div className="mb-2.5 flex flex-wrap gap-2">
                       {msg.attachments.map((attachment) => (
                         <a
                           key={attachment.id}
                           href={attachment.dataUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="group overflow-hidden rounded-lg border border-border/60 bg-background/40"
+                          className="group block overflow-hidden rounded-lg"
+                          title={attachment.name}
                         >
                           <img
                             src={attachment.dataUrl}
                             alt={attachment.name}
-                            className="h-20 w-full object-cover transition-transform duration-200 group-hover:scale-[1.04]"
+                            className="h-24 max-w-[180px] rounded-lg object-cover ring-1 ring-white/15 transition-transform duration-200 group-hover:scale-[1.03]"
                           />
-                          <div className="truncate px-1.5 py-1 text-[10px] text-muted-foreground/80">
-                            {attachment.name}
-                          </div>
                         </a>
                       ))}
                     </div>
@@ -1280,75 +1220,6 @@ export function ChatArea() {
             )}
 
             <div className="space-y-2">
-              {pastedImages.length > 0 && (
-                <div className="rounded-xl border border-border/60 bg-secondary/40 p-2">
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/80">
-                      <ImagePlus className="h-3.5 w-3.5" />
-                      <span>图片附件 {pastedImages.length}/{MAX_ATTACHMENT_IMAGES}</span>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleClearPastedImages}
-                      className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      清空
-                    </Button>
-                  </div>
-                  <div className="flex gap-2 overflow-x-auto pb-1">
-                    {pastedImages.map((image, imageIndex) => (
-                      <div
-                        key={image.id}
-                        className="group relative w-[74px] shrink-0 overflow-hidden rounded-lg border border-border/60 bg-background/60 p-1"
-                      >
-                        <img
-                          src={image.dataUrl}
-                          alt={image.name}
-                          className="h-14 w-full rounded object-cover"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleRemovePastedImage(image.id)}
-                          className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-border/70 bg-background/80 text-foreground/75 opacity-0 transition-opacity group-hover:opacity-100"
-                          aria-label={`移除图片 ${image.name}`}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                        <div className="absolute bottom-1 right-1 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                          <button
-                            type="button"
-                            onClick={() => handleMovePastedImage(image.id, 'left')}
-                            disabled={imageIndex === 0}
-                            className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border/70 bg-background/85 text-foreground/75 disabled:opacity-35"
-                            aria-label={`左移图片 ${image.name}`}
-                          >
-                            <ChevronLeft className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleMovePastedImage(image.id, 'right')}
-                            disabled={imageIndex === pastedImages.length - 1}
-                            className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-border/70 bg-background/85 text-foreground/75 disabled:opacity-35"
-                            aria-label={`右移图片 ${image.name}`}
-                          >
-                            <ChevronRight className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                        <div className="mt-1 truncate text-[10px] leading-tight text-muted-foreground/85" title={image.name}>
-                          {image.name}
-                        </div>
-                        <div className="truncate text-[10px] text-muted-foreground/75">
-                          {formatSizeLabel(image.sizeBytes)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               <input
                 ref={imageInputRef}
                 type="file"
@@ -1360,7 +1231,7 @@ export function ChatArea() {
 
               <div
                 className={[
-                  'relative flex gap-3 items-end composer-shell rounded-xl border border-border/60 p-2.5 transition-all',
+                  'relative composer-shell rounded-xl border border-border/60 p-2.5 transition-all',
                   isDropActive ? 'border-primary/55 bg-[hsl(var(--primary)/0.08)]' : '',
                 ].join(' ')}
                 onDragEnter={handleComposerDragEnter}
@@ -1369,53 +1240,82 @@ export function ChatArea() {
                 onDrop={handleComposerDrop}
                 onDragEnd={resetComposerDropState}
               >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleOpenImagePicker}
-                  disabled={pastedImages.length >= MAX_ATTACHMENT_IMAGES}
-                  title="添加图片附件"
-                  aria-label="添加图片附件"
-                  className="h-10 w-10 shrink-0 rounded-xl text-muted-foreground hover:text-foreground disabled:opacity-35"
-                >
-                  <ImagePlus className="h-4 w-4" />
-                </Button>
-                <Textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  onClick={handleInputCursorChange}
-                  onKeyUp={handleInputKeyUp}
-                  onSelect={handleInputCursorChange}
-                  onPaste={handlePaste}
-                  onBlur={() => setAutocomplete(null)}
-                  placeholder="输入消息… (Enter 发送，Ctrl+V/拖拽/按钮添加图片)"
-                  className="flex-1 min-h-[40px] max-h-[200px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-[0.95rem] placeholder:text-muted-foreground/60"
-                  rows={1}
-                />
-                {isLoading ? (
-                  <Button
-                    variant="destructive"
-                    size="icon"
-                    onClick={cancelStream}
-                    aria-label="停止生成"
-                    className="h-10 w-10 rounded-xl shrink-0"
-                  >
-                    <Square className="h-4 w-4" />
-                  </Button>
-                ) : (
-                  <Button
-                    size="icon"
-                    onClick={handleSend}
-                    disabled={!hasComposedContent}
-                    aria-label="发送消息"
-                    className="h-10 w-10 rounded-xl shrink-0 text-primary-foreground shadow-primary/20 disabled:opacity-30"
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
+                {pastedImages.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2 px-0.5">
+                    {pastedImages.map((image) => (
+                      <div
+                        key={image.id}
+                        className="group relative shrink-0"
+                      >
+                        <img
+                          src={image.dataUrl}
+                          alt={image.name}
+                          title={image.name}
+                          className="h-16 w-16 rounded-lg object-cover ring-1 ring-border/50"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePastedImage(image.id)}
+                          className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-foreground/80 text-background shadow-sm opacity-0 transition-opacity group-hover:opacity-100"
+                          aria-label={`移除 ${image.name}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 )}
+
+                <div className="flex gap-3 items-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleOpenImagePicker}
+                    disabled={pastedImages.length >= MAX_ATTACHMENT_IMAGES}
+                    title="添加图片"
+                    aria-label="添加图片"
+                    className="h-10 w-10 shrink-0 rounded-xl text-muted-foreground hover:text-foreground disabled:opacity-35"
+                  >
+                    <ImagePlus className="h-4 w-4" />
+                  </Button>
+                  <Textarea
+                    ref={textareaRef}
+                    value={input}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
+                    onClick={handleInputCursorChange}
+                    onKeyUp={handleInputKeyUp}
+                    onSelect={handleInputCursorChange}
+                    onPaste={handlePaste}
+                    onBlur={() => setAutocomplete(null)}
+                    placeholder="输入消息… (Enter 发送，Ctrl+V/拖拽/按钮添加图片)"
+                    className="flex-1 min-h-[40px] max-h-[200px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-[0.95rem] placeholder:text-muted-foreground/60"
+                    rows={1}
+                  />
+                  {isLoading ? (
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      onClick={cancelStream}
+                      aria-label="停止生成"
+                      className="h-10 w-10 rounded-xl shrink-0"
+                    >
+                      <Square className="h-4 w-4" />
+                    </Button>
+                  ) : (
+                    <Button
+                      size="icon"
+                      onClick={handleSend}
+                      disabled={!hasComposedContent}
+                      aria-label="发送消息"
+                      className="h-10 w-10 rounded-xl shrink-0 text-primary-foreground shadow-primary/20 disabled:opacity-30"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+
                 {isDropActive && (
                   <div className="pointer-events-none absolute inset-0 rounded-xl border border-primary/50 bg-[hsl(var(--background)/0.7)] backdrop-blur-sm flex items-center justify-center">
                     <div className="flex items-center gap-2 text-sm text-primary">

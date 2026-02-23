@@ -110,6 +110,26 @@ export interface ModelConfig {
 }
 
 /**
+ * Persistent model service instance (API key is encrypted when saved to disk)
+ */
+export interface ModelServiceInstance {
+  id: string;
+  name: string;
+  provider: Provider;
+  model: string;
+  apiKey: string;
+  baseURL?: string;
+}
+
+/**
+ * Persistent model services configuration
+ */
+export interface ModelServicesConfig {
+  activeInstanceId: string | null;
+  instances: ModelServiceInstance[];
+}
+
+/**
  * Stream chunk data structure
  */
 export interface StreamChunk {
@@ -374,8 +394,8 @@ export interface ElectronAPI {
   sessionRename: (id: string, title: string) => Promise<boolean>;
 
   // Config management
-  configSave: (config: Partial<ModelConfig>) => Promise<boolean>;
-  configLoad: () => Promise<Partial<ModelConfig>>;
+  configSave: (config: ModelServicesConfig) => Promise<boolean>;
+  configLoad: () => Promise<ModelServicesConfig>;
 
   // MCP management
   mcpListServers: () => Promise<McpServerStatus[]>;
