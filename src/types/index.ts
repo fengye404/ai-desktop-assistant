@@ -99,7 +99,7 @@ export type ChunkType =
   | 'processing';
 
 /**
- * Model configuration for AI providers
+ * Model configuration for AI providers (internal, used by ClaudeService)
  */
 export interface ModelConfig {
   provider: Provider;
@@ -111,6 +111,7 @@ export interface ModelConfig {
 
 /**
  * Persistent model service instance (API key is encrypted when saved to disk)
+ * @deprecated Use ModelProvider + ModelProvidersConfig instead
  */
 export interface ModelServiceInstance {
   id: string;
@@ -122,11 +123,33 @@ export interface ModelServiceInstance {
 }
 
 /**
- * Persistent model services configuration
+ * @deprecated Use ModelProvidersConfig instead
  */
 export interface ModelServicesConfig {
   activeInstanceId: string | null;
   instances: ModelServiceInstance[];
+}
+
+/**
+ * Model provider (供应商) with name, description, protocol, baseURL, and apiKey
+ */
+export interface ModelProvider {
+  id: string;
+  name: string;
+  description: string;
+  protocol: Provider;
+  baseURL?: string;
+  apiKey: string;
+  models: string[];
+}
+
+/**
+ * Persistent model providers configuration
+ */
+export interface ModelProvidersConfig {
+  activeProviderId: string | null;
+  activeModelId: string | null;
+  providers: ModelProvider[];
 }
 
 /**
@@ -394,8 +417,8 @@ export interface ElectronAPI {
   sessionRename: (id: string, title: string) => Promise<boolean>;
 
   // Config management
-  configSave: (config: ModelServicesConfig) => Promise<boolean>;
-  configLoad: () => Promise<ModelServicesConfig>;
+  configSave: (config: ModelProvidersConfig) => Promise<boolean>;
+  configLoad: () => Promise<ModelProvidersConfig>;
 
   // MCP management
   mcpListServers: () => Promise<McpServerStatus[]>;

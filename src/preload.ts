@@ -8,7 +8,7 @@ import type {
   McpServerStatus,
   McpToolInfo,
   ModelConfig,
-  ModelServicesConfig,
+  ModelProvidersConfig,
   PathAutocompleteItem,
   RewindHistoryResult,
   StreamChunk,
@@ -143,11 +143,11 @@ const electronAPI: ElectronAPI = {
   sessionRename: (id: string, title: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.SESSION_RENAME, id, title),
 
-  configSave: (config: ModelServicesConfig) =>
+  configSave: (config: ModelProvidersConfig) =>
     ipcRenderer.invoke(IPC_CHANNELS.CONFIG_SAVE, config),
 
   configLoad: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.CONFIG_LOAD) as Promise<ModelServicesConfig>,
+    ipcRenderer.invoke(IPC_CHANNELS.CONFIG_LOAD) as Promise<ModelProvidersConfig>,
 
   mcpListServers: () =>
     ipcRenderer.invoke(IPC_CHANNELS.MCP_LIST_SERVERS) as Promise<McpServerStatus[]>,

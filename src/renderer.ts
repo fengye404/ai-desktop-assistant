@@ -227,8 +227,8 @@ class ChatApp {
         apiKey: encryptedKey,
       };
 
-      // Save config to SQLite via IPC
-      await window.electronAPI.configSave(config);
+      // Save config to SQLite via IPC (legacy shim)
+      await window.electronAPI.configSave(config as never);
 
       // Apply to backend with API key
       await window.electronAPI.setModelConfig({

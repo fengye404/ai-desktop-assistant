@@ -143,7 +143,22 @@ export const useChatStore = create<ChatState>((set, get) => {
 
       try {
         const configStore = useConfigStore.getState();
-        configStore.setModel(targetModel);
+        const { providers, activeProviderId } = configStore;
+
+        // First try to find the model in any provider
+        let foundProvider = providers.find(
+          (p) => p.id === activeProviderId && p.models.includes(targetModel),
+        );
+        if (!foundProvider) {
+          foundProvider = providers.find((p) => p.models.includes(targetModel));
+        }
+
+        if (foundProvider) {
+          configStore.setActiveModel(foundProvider.id, targetModel);
+        } else {
+          configStore.setModel(targetModel);
+        }
+
         await configStore.saveConfig();
         appendAssistantMessage(`模型已切换为 \`${targetModel}\``);
       } catch (error) {

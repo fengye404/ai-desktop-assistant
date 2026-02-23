@@ -12,6 +12,9 @@ import {
   PlugZap,
   Layers3,
   SlidersHorizontal,
+  X,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import {
   Dialog,
@@ -28,6 +31,7 @@ import type {
   McpServerTransport,
   McpToolInfo,
   Provider,
+  ModelProvider,
 } from '../../types';
 import { useConfigStore, ALL_TOOLS } from '@/stores/config-store';
 import { cn } from '@/lib/utils';
@@ -46,7 +50,7 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
 };
 
 type PrimaryMenuKey = 'general' | 'tools' | 'mcp';
-type GeneralSubMenuKey = 'model' | 'connection';
+type GeneralSubMenuKey = 'providers' | 'connection';
 type ToolsSubMenuKey = 'permissions';
 type McpSubMenuKey = 'servers' | 'loadedTools';
 
@@ -66,7 +70,7 @@ const PRIMARY_MENU_ITEMS: PrimaryMenuItem[] = [
   {
     key: 'general',
     label: '基础设置',
-    description: '模型与连接',
+    description: '供应商与模型',
     icon: SlidersHorizontal,
   },
   {
@@ -84,7 +88,7 @@ const PRIMARY_MENU_ITEMS: PrimaryMenuItem[] = [
 ];
 
 const GENERAL_SUB_MENUS: SubMenuItem<GeneralSubMenuKey>[] = [
-  { key: 'model', label: '模型配置' },
+  { key: 'providers', label: '模型供应商' },
   { key: 'connection', label: '连接状态' },
 ];
 
@@ -169,24 +173,211 @@ function SecondaryMenu<T extends string>({
   );
 }
 
+function createProviderId(): string {
+  return `provider_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function ProviderCard({
+  provider,
+  isExpanded,
+  onToggleExpand,
+  onUpdate,
+  onRemove,
+  onAddModel,
+  onRemoveModel,
+}: {
+  provider: ModelProvider;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  onUpdate: (patch: Partial<Omit<ModelProvider, 'id'>>) => void;
+  onRemove: () => void;
+  onAddModel: (modelId: string) => void;
+  onRemoveModel: (modelId: string) => void;
+}) {
+  const [newModelId, setNewModelId] = useState('');
+  const fieldClassName =
+    'border-border/70 bg-[hsl(var(--background)/0.55)] placeholder:text-muted-foreground/70 focus-visible:border-primary/55 focus-visible:ring-primary/35';
+  const selectClassName =
+    'h-9 w-full rounded-lg border border-border/70 bg-[hsl(var(--background)/0.55)] px-3 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/35 focus:border-primary/55';
+
+  const handleAddModel = () => {
+    const trimmed = newModelId.trim();
+    if (!trimmed) return;
+    onAddModel(trimmed);
+    setNewModelId('');
+  };
+
+  return (
+    <div className="rounded-2xl border border-border/60 bg-[linear-gradient(165deg,hsl(var(--secondary)/0.35),hsl(var(--background)/0.4))] overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggleExpand}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-secondary/30 transition-colors"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          {isExpanded
+            ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          }
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground/95 truncate">{provider.name}</p>
+            {provider.description && (
+              <p className="text-[11px] text-muted-foreground truncate">{provider.description}</p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="rounded-full border border-border/55 bg-background/40 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+            {provider.protocol === 'anthropic' ? 'Anthropic' : 'OpenAI'}
+          </span>
+          <span className="rounded-full border border-border/55 bg-background/40 px-2 py-0.5 text-[10px] text-muted-foreground">
+            {provider.models.length} 个模型
+          </span>
+        </div>
+      </button>
+
+      {isExpanded && (
+        <div className="border-t border-border/50 px-4 py-4 space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground/90">名称</label>
+              <Input
+                value={provider.name}
+                onChange={(e) => onUpdate({ name: e.target.value })}
+                placeholder="例如: 硅基流动"
+                className={cn('h-9', fieldClassName)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground/90">协议类型</label>
+              <select
+                value={provider.protocol}
+                onChange={(e) => onUpdate({ protocol: e.target.value as Provider })}
+                className={selectClassName}
+              >
+                <option value="openai">OpenAI 规范</option>
+                <option value="anthropic">Anthropic 规范</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-foreground/90">描述 <span className="font-normal text-muted-foreground">(可选)</span></label>
+            <Input
+              value={provider.description}
+              onChange={(e) => onUpdate({ description: e.target.value })}
+              placeholder="简短描述此供应商"
+              className={cn('h-9', fieldClassName)}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-foreground/90">Base URL</label>
+            <Input
+              value={provider.baseURL || ''}
+              onChange={(e) => onUpdate({ baseURL: e.target.value || undefined })}
+              placeholder="例如: https://api.siliconflow.cn/v1/chat/completions"
+              className={cn('h-9', fieldClassName)}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-foreground/90">API Key</label>
+            <Input
+              type="password"
+              value={provider.apiKey}
+              onChange={(e) => onUpdate({ apiKey: e.target.value })}
+              placeholder="输入你的 API Key"
+              className={cn('h-9', fieldClassName)}
+            />
+            <p className="text-[11px] text-muted-foreground">密钥仅保存在本机，使用系统安全存储加密。</p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-foreground/90">模型列表</label>
+            </div>
+
+            {provider.models.length > 0 && (
+              <div className="space-y-1.5">
+                {provider.models.map((modelId) => (
+                  <div
+                    key={modelId}
+                    className="flex items-center justify-between rounded-lg border border-border/55 bg-background/35 px-3 py-2"
+                  >
+                    <code className="text-sm text-foreground/90">{modelId}</code>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveModel(modelId)}
+                      className="text-muted-foreground hover:text-destructive transition-colors"
+                      title="移除模型"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <Input
+                value={newModelId}
+                onChange={(e) => setNewModelId(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddModel();
+                  }
+                }}
+                placeholder="输入模型 ID，例如: deepseek-ai/DeepSeek-R1"
+                className={cn('h-9 flex-1', fieldClassName)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAddModel}
+                disabled={!newModelId.trim()}
+                className="h-9 gap-1 border-border/65 bg-background/40 hover:bg-secondary/65 shrink-0"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                添加
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onRemove}
+              className="gap-1.5 text-destructive/80 hover:text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              删除此供应商
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SettingsDialog() {
   const {
-    instances,
-    activeInstanceId,
-    setActiveInstance,
-    createInstance,
-    removeInstance,
-    renameInstance,
+    providers,
+    activeProviderId,
+    activeModelId,
+    addProvider,
+    updateProvider,
+    removeProvider,
+    addModelToProvider,
+    removeModelFromProvider,
     isSettingsOpen,
     setSettingsOpen,
-    provider,
-    setProvider,
     model,
-    setModel,
     apiKey,
-    setApiKey,
-    baseURL,
-    setBaseURL,
     allowedTools,
     toggleTool,
     connectionStatus,
@@ -195,9 +386,10 @@ export function SettingsDialog() {
   } = useConfigStore();
 
   const [activePrimary, setActivePrimary] = useState<PrimaryMenuKey>('general');
-  const [activeGeneralSubMenu, setActiveGeneralSubMenu] = useState<GeneralSubMenuKey>('model');
+  const [activeGeneralSubMenu, setActiveGeneralSubMenu] = useState<GeneralSubMenuKey>('providers');
   const [activeToolsSubMenu, setActiveToolsSubMenu] = useState<ToolsSubMenuKey>('permissions');
   const [activeMcpSubMenu, setActiveMcpSubMenu] = useState<McpSubMenuKey>('servers');
+  const [expandedProviderId, setExpandedProviderId] = useState<string | null>(null);
 
   const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
   const [mcpTools, setMcpTools] = useState<McpToolInfo[]>([]);
@@ -234,9 +426,10 @@ export function SettingsDialog() {
   useEffect(() => {
     if (!isSettingsOpen) return;
     setActivePrimary('general');
-    setActiveGeneralSubMenu('model');
+    setActiveGeneralSubMenu('providers');
     setActiveToolsSubMenu('permissions');
     setActiveMcpSubMenu('servers');
+    setExpandedProviderId(null);
   }, [isSettingsOpen]);
 
   const handleRefreshMcp = useCallback(async () => {
@@ -328,6 +521,19 @@ export function SettingsDialog() {
     }
   }, []);
 
+  const handleAddProvider = useCallback(() => {
+    const newProvider: ModelProvider = {
+      id: createProviderId(),
+      name: '',
+      description: '',
+      protocol: 'openai',
+      apiKey: '',
+      models: [],
+    };
+    addProvider(newProvider);
+    setExpandedProviderId(newProvider.id);
+  }, [addProvider]);
+
   const activePrimaryItem = useMemo(
     () => PRIMARY_MENU_ITEMS.find((item) => item.key === activePrimary),
     [activePrimary],
@@ -336,10 +542,6 @@ export function SettingsDialog() {
   const enabledMcpServers = useMemo(
     () => mcpServers.filter((server) => server.enabled).length,
     [mcpServers],
-  );
-  const activeModelInstance = useMemo(
-    () => instances.find((item) => item.id === activeInstanceId) ?? instances[0] ?? null,
-    [instances, activeInstanceId],
   );
   const connectedMcpServers = useMemo(
     () => mcpServers.filter((server) => server.connected).length,
@@ -363,6 +565,11 @@ export function SettingsDialog() {
     return MCP_SUB_MENUS.find((item) => item.key === activeMcpSubMenu)?.label ?? '';
   }, [activePrimary, activeGeneralSubMenu, activeToolsSubMenu, activeMcpSubMenu]);
 
+  const activeProviderName = useMemo(() => {
+    const p = providers.find((item) => item.id === activeProviderId);
+    return p?.name || '未选择';
+  }, [providers, activeProviderId]);
+
   return (
     <Dialog open={isSettingsOpen} onOpenChange={setSettingsOpen}>
       <DialogContent className="w-[min(1080px,96vw)] border-border/70 bg-[linear-gradient(165deg,hsl(var(--card)/0.98),hsl(223_18%_7%/0.98))] p-0 sm:max-w-[1080px]">
@@ -377,7 +584,7 @@ export function SettingsDialog() {
               <div>
                 <DialogTitle className="text-xl">设置中心</DialogTitle>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  更清晰的配置分层，覆盖模型、权限和 MCP 管理。
+                  更清晰的配置分层，覆盖模型供应商、权限和 MCP 管理。
                 </p>
               </div>
             </div>
@@ -478,148 +685,54 @@ export function SettingsDialog() {
               {activePrimary === 'general' && (
                 <>
                   <div
-                    aria-hidden={activeGeneralSubMenu !== 'model'}
-                    className={cn('settings-panel-enter', activeGeneralSubMenu === 'model' ? 'block' : 'hidden')}
+                    aria-hidden={activeGeneralSubMenu !== 'providers'}
+                    className={cn('settings-panel-enter', activeGeneralSubMenu === 'providers' ? 'block' : 'hidden')}
                   >
-                    <div className="rounded-2xl border border-border/60 bg-[linear-gradient(165deg,hsl(var(--secondary)/0.4),hsl(var(--background)/0.42))] p-4 sm:p-5">
-                      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-foreground/95">模型与凭证</p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            选择服务商并填入模型参数，保存后全局生效。
-                          </p>
+                    <div className="space-y-3">
+                      <div className="rounded-2xl border border-border/60 bg-[linear-gradient(165deg,hsl(var(--secondary)/0.4),hsl(var(--background)/0.42))] p-4 sm:p-5">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-foreground/95">模型供应商管理</p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              添加模型供应商，配置协议类型和 API 凭证，然后在供应商下添加模型。
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="rounded-full border border-border/65 bg-background/50 px-3 py-1 text-xs text-muted-foreground">
+                              {providers.length} 个供应商
+                            </span>
+                          </div>
                         </div>
-                        <span className="rounded-full border border-border/65 bg-background/50 px-3 py-1 text-xs text-muted-foreground">
-                          {activeModelInstance?.name || (provider === 'anthropic' ? 'Anthropic' : 'OpenAI Compatible')}
-                        </span>
                       </div>
 
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <label htmlFor="settings-instance-select" className="text-sm font-medium text-foreground/92">
-                            模型实例
-                          </label>
-                          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
-                            <select
-                              id="settings-instance-select"
-                              value={activeModelInstance?.id || ''}
-                              onChange={(e) => setActiveInstance(e.target.value)}
-                              className={selectClassName}
-                            >
-                              {instances.map((item) => (
-                                <option key={item.id} value={item.id}>
-                                  {item.name}
-                                </option>
-                              ))}
-                            </select>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              onClick={createInstance}
-                              className="h-10 w-10 border-border/65 bg-background/40 hover:bg-secondary/70"
-                              title="新增实例"
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              disabled={!activeModelInstance || instances.length <= 1}
-                              onClick={() => {
-                                if (activeModelInstance) {
-                                  removeInstance(activeModelInstance.id);
-                                }
-                              }}
-                              className="h-10 w-10 border-border/65 bg-background/40 hover:bg-destructive/20 hover:text-destructive-foreground"
-                              title="删除当前实例"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                          <p className="text-[11px] text-muted-foreground">可同时配置多个服务实例，保存后写入 SQLite。</p>
-                        </div>
-
-                        <div className="space-y-2">
-                          <label htmlFor="settings-instance-name" className="text-sm font-medium text-foreground/92">
-                            实例名称
-                          </label>
-                          <Input
-                            id="settings-instance-name"
-                            value={activeModelInstance?.name || ''}
-                            onChange={(e) => {
-                              if (activeModelInstance) {
-                                renameInstance(activeModelInstance.id, e.target.value);
-                              }
-                            }}
-                            placeholder="例如: OpenAI 官方 / 阿里云 / Cloud"
-                            className={fieldClassName}
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <label htmlFor="settings-provider" className="text-sm font-medium text-foreground/92">
-                            AI 提供商
-                          </label>
-                          <select
-                            id="settings-provider"
-                            value={provider}
-                            onChange={(e) => setProvider(e.target.value as Provider)}
-                            className={selectClassName}
-                          >
-                            <option value="anthropic">Anthropic (Claude)</option>
-                            <option value="openai">OpenAI / 兼容 API</option>
-                          </select>
-                        </div>
-
-                        <div className="space-y-2">
-                          <label htmlFor="settings-model" className="text-sm font-medium text-foreground/92">
-                            模型
-                          </label>
-                          <Input
-                            id="settings-model"
-                            value={model}
-                            onChange={(e) => setModel(e.target.value)}
-                            placeholder={
-                              provider === 'anthropic'
-                                ? '例如: claude-sonnet-4-20250514'
-                                : '例如: gpt-4o, deepseek-chat'
+                      {providers.map((provider) => (
+                        <ProviderCard
+                          key={provider.id}
+                          provider={provider}
+                          isExpanded={expandedProviderId === provider.id}
+                          onToggleExpand={() => setExpandedProviderId(
+                            expandedProviderId === provider.id ? null : provider.id
+                          )}
+                          onUpdate={(patch) => updateProvider(provider.id, patch)}
+                          onRemove={() => {
+                            removeProvider(provider.id);
+                            if (expandedProviderId === provider.id) {
+                              setExpandedProviderId(null);
                             }
-                            className={fieldClassName}
-                          />
-                        </div>
+                          }}
+                          onAddModel={(modelId) => addModelToProvider(provider.id, modelId)}
+                          onRemoveModel={(modelId) => removeModelFromProvider(provider.id, modelId)}
+                        />
+                      ))}
 
-                        <div className="space-y-2">
-                          <label htmlFor="settings-api-key" className="text-sm font-medium text-foreground/92">
-                            API Key
-                          </label>
-                          <Input
-                            id="settings-api-key"
-                            type="password"
-                            value={apiKey}
-                            onChange={(e) => setApiKey(e.target.value)}
-                            placeholder="输入你的 API Key"
-                            className={fieldClassName}
-                          />
-                          <p className="text-[11px] text-muted-foreground">密钥仅保存在本机，不会上传到公共服务。</p>
-                        </div>
-
-                        {provider === 'openai' && (
-                          <div className="space-y-2">
-                            <label htmlFor="settings-base-url" className="text-sm font-medium text-foreground/92">
-                              Base URL <span className="font-normal text-muted-foreground">(可选)</span>
-                            </label>
-                            <Input
-                              id="settings-base-url"
-                              value={baseURL}
-                              onChange={(e) => setBaseURL(e.target.value)}
-                              placeholder="例如: https://api.deepseek.com/v1"
-                              className={fieldClassName}
-                            />
-                          </div>
-                        )}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAddProvider}
+                        className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border/55 bg-secondary/15 px-4 py-4 text-sm text-muted-foreground transition-all hover:border-primary/40 hover:bg-primary/8 hover:text-foreground"
+                      >
+                        <Plus className="h-4 w-4" />
+                        添加模型供应商
+                      </button>
                     </div>
                   </div>
 
@@ -661,7 +774,7 @@ export function SettingsDialog() {
                             {connectionStatus.message}
                           </p>
                           <p className="mt-2 text-xs text-muted-foreground">
-                            先保存模型配置，再执行“测试连接”，结果会更准确。
+                            先保存模型配置，再执行"测试连接"，结果会更准确。
                           </p>
                         </div>
                       </div>
@@ -669,9 +782,9 @@ export function SettingsDialog() {
 
                     <div className="grid gap-2.5 sm:grid-cols-2">
                       <div className="rounded-xl border border-border/60 bg-secondary/25 px-3 py-2.5">
-                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">当前实例</p>
+                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">当前供应商</p>
                         <p className="mt-1 text-sm font-medium text-foreground/92">
-                          {activeModelInstance?.name || '-'}
+                          {activeProviderName}
                         </p>
                       </div>
                       <div className="rounded-xl border border-border/60 bg-secondary/25 px-3 py-2.5">
@@ -680,6 +793,13 @@ export function SettingsDialog() {
                           {hasModelCredentials ? '模型与凭证已填写' : '缺少模型或 API Key'}
                         </p>
                       </div>
+                    </div>
+
+                    <div className="rounded-xl border border-border/60 bg-secondary/25 px-3 py-2.5">
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">当前模型</p>
+                      <p className="mt-1 text-sm font-medium text-foreground/92">
+                        {activeModelId || '未选择'}
+                      </p>
                     </div>
                   </div>
                 </>
@@ -698,7 +818,7 @@ export function SettingsDialog() {
                       </span>
                     </div>
                     <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                      启用后，该工具会默认自动执行。建议仅开启你信任的能力，修改后点击“保存设置”持久化。
+                      启用后，该工具会默认自动执行。建议仅开启你信任的能力，修改后点击"保存设置"持久化。
                     </p>
                   </div>
 
@@ -944,7 +1064,7 @@ export function SettingsDialog() {
 
                   {mcpTools.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-border/55 bg-secondary/20 px-3 py-3 text-xs text-muted-foreground">
-                      还没有已加载工具。请先在“服务器管理”里添加并刷新 MCP 服务器。
+                      还没有已加载工具。请先在"服务器管理"里添加并刷新 MCP 服务器。
                     </div>
                   ) : (
                     <div className="grid gap-2.5 sm:grid-cols-2">

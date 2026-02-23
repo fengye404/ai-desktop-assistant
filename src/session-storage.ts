@@ -10,6 +10,8 @@ import type {
   ModelConfig,
   ModelServiceInstance,
   ModelServicesConfig,
+  ModelProvider,
+  ModelProvidersConfig,
   MessageItem,
   McpServersConfig,
   Provider,
@@ -52,9 +54,15 @@ function generateTitle(messages: ChatMessage[]): string {
 }
 
 const ACTIVE_MODEL_INSTANCE_ID_KEY = 'activeModelInstanceId';
+const ACTIVE_PROVIDER_ID_KEY = 'activeProviderId';
+const ACTIVE_MODEL_ID_KEY = 'activeModelId';
 
 function createModelInstanceId(): string {
   return `model_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createProviderId(): string {
+  return `provider_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function getDefaultModel(provider: Provider): string {
@@ -143,6 +151,29 @@ export class SessionStorage {
       )
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS model_providers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        protocol TEXT NOT NULL DEFAULT 'openai',
+        base_url TEXT,
+        api_key TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS provider_models (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider_id TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (provider_id) REFERENCES model_providers(id) ON DELETE CASCADE
+      )
+    `);
+
     // Create index for faster queries
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)
@@ -150,8 +181,12 @@ export class SessionStorage {
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_model_instances_updated_at ON model_instances(updated_at DESC)
     `);
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_provider_models_provider_id ON provider_models(provider_id)
+    `);
 
     this.migrateLegacySingleConfig();
+    this.migrateModelInstancesToProviders();
 
     // Enable foreign keys
     this.db.pragma('foreign_keys = ON');
@@ -231,6 +266,224 @@ export class SessionStorage {
     });
 
     transaction();
+  }
+
+  /**
+   * Migrate from model_instances to model_providers + provider_models
+   */
+  private migrateModelInstancesToProviders(): void {
+    const existingProviders = this.db
+      .prepare('SELECT COUNT(1) as count FROM model_providers')
+      .get() as { count: number };
+
+    if (existingProviders.count > 0) {
+      return;
+    }
+
+    const instances = this.db
+      .prepare('SELECT id, name, provider, model, base_url, api_key FROM model_instances ORDER BY updated_at DESC')
+      .all() as Array<{
+        id: string;
+        name: string;
+        provider: string;
+        model: string;
+        base_url: string | null;
+        api_key: string | null;
+      }>;
+
+    if (instances.length === 0) {
+      return;
+    }
+
+    const now = Date.now();
+    const insertProviderStmt = this.db.prepare(`
+      INSERT INTO model_providers (id, name, description, protocol, base_url, api_key, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const insertModelStmt = this.db.prepare(`
+      INSERT INTO provider_models (provider_id, model_id, created_at) VALUES (?, ?, ?)
+    `);
+    const upsertConfigStmt = this.db.prepare(`
+      INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)
+    `);
+
+    const activeIdRow = this.db
+      .prepare('SELECT value FROM config WHERE key = ?')
+      .get(ACTIVE_MODEL_INSTANCE_ID_KEY) as { value: string } | undefined;
+
+    let firstProviderId: string | null = null;
+    let activeProviderId: string | null = null;
+    let activeModelId: string | null = null;
+
+    const transaction = this.db.transaction(() => {
+      for (const instance of instances) {
+        const providerId = createProviderId();
+        const protocol = normalizeProvider(instance.provider);
+
+        if (!firstProviderId) {
+          firstProviderId = providerId;
+        }
+
+        if (activeIdRow?.value === instance.id) {
+          activeProviderId = providerId;
+          activeModelId = instance.model;
+        }
+
+        insertProviderStmt.run(
+          providerId,
+          instance.name,
+          '',
+          protocol,
+          instance.base_url,
+          instance.api_key || '',
+          now,
+          now,
+        );
+
+        if (instance.model?.trim()) {
+          insertModelStmt.run(providerId, instance.model.trim(), now);
+        }
+      }
+
+      if (!activeProviderId && firstProviderId) {
+        activeProviderId = firstProviderId;
+        activeModelId = instances[0]?.model || null;
+      }
+
+      if (activeProviderId) {
+        upsertConfigStmt.run(ACTIVE_PROVIDER_ID_KEY, activeProviderId);
+      }
+      if (activeModelId) {
+        upsertConfigStmt.run(ACTIVE_MODEL_ID_KEY, activeModelId);
+      }
+    });
+
+    transaction();
+  }
+
+  /**
+   * Save model providers configuration
+   */
+  saveModelProvidersConfig(config: ModelProvidersConfig): void {
+    const now = Date.now();
+
+    const existingProviderRows = this.db.prepare('SELECT id FROM model_providers').all() as Array<{ id: string }>;
+    const existingProviderIds = new Set(existingProviderRows.map((r) => r.id));
+
+    const upsertProviderStmt = this.db.prepare(`
+      INSERT INTO model_providers (id, name, description, protocol, base_url, api_key, created_at, updated_at)
+      VALUES (@id, @name, @description, @protocol, @baseURL, @apiKey, @createdAt, @updatedAt)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        description = excluded.description,
+        protocol = excluded.protocol,
+        base_url = excluded.base_url,
+        api_key = excluded.api_key,
+        updated_at = excluded.updated_at
+    `);
+    const deleteProviderStmt = this.db.prepare('DELETE FROM model_providers WHERE id = ?');
+    const deleteModelsStmt = this.db.prepare('DELETE FROM provider_models WHERE provider_id = ?');
+    const insertModelStmt = this.db.prepare(
+      'INSERT INTO provider_models (provider_id, model_id, created_at) VALUES (?, ?, ?)'
+    );
+    const upsertConfigStmt = this.db.prepare(`
+      INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)
+    `);
+
+    const nextProviderIds = new Set(config.providers.map((p) => p.id));
+
+    const transaction = this.db.transaction(() => {
+      for (const provider of config.providers) {
+        upsertProviderStmt.run({
+          id: provider.id,
+          name: provider.name,
+          description: provider.description || '',
+          protocol: provider.protocol,
+          baseURL: provider.baseURL ?? null,
+          apiKey: provider.apiKey || '',
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        deleteModelsStmt.run(provider.id);
+        for (const modelId of provider.models) {
+          if (modelId.trim()) {
+            insertModelStmt.run(provider.id, modelId.trim(), now);
+          }
+        }
+      }
+
+      for (const existingId of existingProviderIds) {
+        if (!nextProviderIds.has(existingId)) {
+          deleteModelsStmt.run(existingId);
+          deleteProviderStmt.run(existingId);
+        }
+      }
+
+      const activeProviderId = config.activeProviderId && nextProviderIds.has(config.activeProviderId)
+        ? config.activeProviderId
+        : config.providers[0]?.id ?? null;
+
+      upsertConfigStmt.run(ACTIVE_PROVIDER_ID_KEY, activeProviderId ?? '');
+      upsertConfigStmt.run(ACTIVE_MODEL_ID_KEY, config.activeModelId ?? '');
+    });
+
+    transaction();
+  }
+
+  /**
+   * Load model providers configuration
+   */
+  loadModelProvidersConfig(): ModelProvidersConfig {
+    const providerRows = this.db
+      .prepare(`
+        SELECT id, name, description, protocol, base_url as baseURL, api_key as apiKey
+        FROM model_providers
+        ORDER BY updated_at DESC, created_at ASC
+      `)
+      .all() as Array<{
+        id: string;
+        name: string;
+        description: string;
+        protocol: string;
+        baseURL: string | null;
+        apiKey: string | null;
+      }>;
+
+    const providers: ModelProvider[] = providerRows.map((row) => {
+      const modelRows = this.db
+        .prepare('SELECT model_id FROM provider_models WHERE provider_id = ? ORDER BY created_at ASC')
+        .all(row.id) as Array<{ model_id: string }>;
+
+      return {
+        id: row.id,
+        name: row.name,
+        description: row.description || '',
+        protocol: normalizeProvider(row.protocol),
+        baseURL: row.baseURL || undefined,
+        apiKey: row.apiKey || '',
+        models: modelRows.map((m) => m.model_id),
+      };
+    });
+
+    const activeProviderRow = this.db
+      .prepare('SELECT value FROM config WHERE key = ?')
+      .get(ACTIVE_PROVIDER_ID_KEY) as { value: string } | undefined;
+    const activeModelRow = this.db
+      .prepare('SELECT value FROM config WHERE key = ?')
+      .get(ACTIVE_MODEL_ID_KEY) as { value: string } | undefined;
+
+    const activeProviderId = activeProviderRow?.value && providers.some((p) => p.id === activeProviderRow.value)
+      ? activeProviderRow.value
+      : providers[0]?.id ?? null;
+
+    const activeModelId = activeModelRow?.value || null;
+
+    return {
+      activeProviderId,
+      activeModelId,
+      providers,
+    };
   }
 
   /**

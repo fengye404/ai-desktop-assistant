@@ -1,23 +1,23 @@
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../types';
-import type { ModelConfig, ModelServicesConfig } from '../../types';
+import type { ModelConfig, ModelProvidersConfig } from '../../types';
 import type { MainProcessContext } from '../main-process-context';
 
-function isModelServicesConfig(payload: unknown): payload is ModelServicesConfig {
+function isModelProvidersConfig(payload: unknown): payload is ModelProvidersConfig {
   if (!payload || typeof payload !== 'object') {
     return false;
   }
 
-  const maybePayload = payload as Partial<ModelServicesConfig>;
-  return Array.isArray(maybePayload.instances);
+  const maybePayload = payload as Partial<ModelProvidersConfig>;
+  return Array.isArray(maybePayload.providers);
 }
 
 export function registerConfigHandlers(context: MainProcessContext): void {
-  ipcMain.handle(IPC_CHANNELS.CONFIG_SAVE, async (_event, config: ModelServicesConfig | Partial<ModelConfig>) => {
+  ipcMain.handle(IPC_CHANNELS.CONFIG_SAVE, async (_event, config: ModelProvidersConfig | Partial<ModelConfig>) => {
     const storage = context.getSessionStorageOrThrow();
 
-    if (isModelServicesConfig(config)) {
-      storage.saveModelServicesConfig(config);
+    if (isModelProvidersConfig(config)) {
+      storage.saveModelProvidersConfig(config);
     } else {
       storage.saveConfig(config);
     }
@@ -27,6 +27,6 @@ export function registerConfigHandlers(context: MainProcessContext): void {
 
   ipcMain.handle(IPC_CHANNELS.CONFIG_LOAD, async () => {
     const storage = context.getSessionStorageOrThrow();
-    return storage.loadModelServicesConfig();
+    return storage.loadModelProvidersConfig();
   });
 }

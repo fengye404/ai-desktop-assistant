@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Send,
   Square,
@@ -13,6 +13,8 @@ import {
   ImagePlus,
   RotateCcw,
   X,
+  ChevronDown,
+  Check,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
@@ -223,6 +225,11 @@ export function ChatArea() {
 
   const setSettingsOpen = useConfigStore((s) => s.setSettingsOpen);
   const apiKey = useConfigStore((s) => s.apiKey);
+  const providers = useConfigStore((s) => s.providers);
+  const activeProviderId = useConfigStore((s) => s.activeProviderId);
+  const activeModelId = useConfigStore((s) => s.activeModelId);
+  const setActiveModel = useConfigStore((s) => s.setActiveModel);
+  const saveConfig = useConfigStore((s) => s.saveConfig);
   const allowToolForSession = useConfigStore((s) => s.allowToolForSession);
   const setAllowAllForSession = useConfigStore((s) => s.setAllowAllForSession);
   const [input, setInput] = useState('');
@@ -236,6 +243,8 @@ export function ChatArea() {
   const [isRecoveryDialogOpen, setIsRecoveryDialogOpen] = useState(false);
   const [recoveryActionBusy, setRecoveryActionBusy] = useState(false);
   const [recoveryMessage, setRecoveryMessage] = useState('');
+  const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
+  const modelSelectorRef = useRef<HTMLDivElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -351,6 +360,29 @@ export function ChatArea() {
     }, 4200);
     return () => window.clearTimeout(timer);
   }, [composerHint]);
+
+  useEffect(() => {
+    if (!isModelSelectorOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modelSelectorRef.current && !modelSelectorRef.current.contains(e.target as Node)) {
+        setIsModelSelectorOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isModelSelectorOpen]);
+
+  const handleSelectModel = useCallback(async (providerId: string, modelId: string) => {
+    setActiveModel(providerId, modelId);
+    setIsModelSelectorOpen(false);
+    await saveConfig();
+  }, [setActiveModel, saveConfig]);
+
+  const currentModelLabel = useMemo(() => {
+    if (!activeModelId) return '选择模型';
+    const parts = activeModelId.split('/');
+    return parts[parts.length - 1] || activeModelId;
+  }, [activeModelId]);
 
   const handleAllowAllForSession = useCallback(() => {
     setAllowAllForSession(true);
@@ -916,7 +948,7 @@ export function ChatArea() {
 
   return (
     <main className="chat-canvas relative flex flex-1 flex-col">
-      <div className="drag-region flex h-14 items-center justify-between border-b border-border/55 bg-background/55 px-5 backdrop-blur-xl">
+      <div className="drag-region relative z-[60] flex h-14 items-center justify-between border-b border-border/55 bg-background/55 px-5 backdrop-blur-xl">
         <div className="flex items-center gap-2 no-drag">
           <div className="h-8 w-8 overflow-hidden rounded-lg border border-border/60 bg-[linear-gradient(135deg,hsl(var(--primary)/0.24),hsl(var(--cool-accent)/0.2))] shadow-[0_6px_16px_hsl(var(--cool-accent)/0.14)]">
             {brandIconLoadFailed ? (
@@ -939,6 +971,61 @@ export function ChatArea() {
             </span>
           </div>
         </div>
+
+        <div className="relative no-drag" ref={modelSelectorRef}>
+          <button
+            type="button"
+            onClick={() => setIsModelSelectorOpen(!isModelSelectorOpen)}
+            className="flex items-center gap-1.5 rounded-lg border border-border/55 bg-secondary/45 px-2.5 py-1.5 text-xs text-foreground/85 transition-all hover:bg-secondary/70 hover:border-border/75"
+          >
+            <span className="max-w-[160px] truncate">{currentModelLabel}</span>
+            <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+          </button>
+
+          {isModelSelectorOpen && providers.length > 0 && (
+            <div className="absolute right-0 top-full mt-1.5 w-72 rounded-xl border border-border/70 bg-[linear-gradient(160deg,hsl(var(--secondary)/0.96),hsl(222_18%_11%/0.96))] shadow-[0_14px_30px_hsl(var(--background)/0.55)] overflow-hidden z-[100]">
+              <div className="max-h-80 overflow-y-auto p-1.5">
+                {providers.map((provider) => (
+                  <div key={provider.id}>
+                    <div className="px-3 py-1.5 text-[11px] uppercase tracking-wide text-muted-foreground/80 font-medium">
+                      {provider.name || '未命名供应商'}
+                    </div>
+                    {provider.models.length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-muted-foreground/60">
+                        暂无模型
+                      </div>
+                    ) : (
+                      provider.models.map((modelId) => {
+                        const isActive = provider.id === activeProviderId && modelId === activeModelId;
+                        return (
+                          <button
+                            key={`${provider.id}-${modelId}`}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              void handleSelectModel(provider.id, modelId);
+                            }}
+                            className={[
+                              'w-full text-left px-3 py-2 rounded-lg transition-all duration-150 flex items-center justify-between gap-2',
+                              isActive
+                                ? 'bg-[linear-gradient(125deg,hsl(var(--cool-accent)/0.2),hsl(var(--secondary)/0.84))] text-foreground'
+                                : 'bg-transparent text-foreground/85 hover:bg-secondary/65',
+                            ].join(' ')}
+                          >
+                            <span className="text-sm truncate">{modelId}</span>
+                            {isActive && <Check className="h-3.5 w-3.5 text-[hsl(var(--cool-accent))] shrink-0" />}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="flex items-center gap-1 no-drag">
           <Button
             variant="ghost"
