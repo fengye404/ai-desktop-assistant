@@ -63,9 +63,15 @@ export interface AgentServiceConfig {
   maxTokens?: number;
 }
 
+export interface ChatAttachment {
+  name: string;
+  mimeType: string;
+  dataUrl: string;
+}
+
 export interface SendMessageOptions {
   systemPrompt?: string;
-  attachments?: Array<{ name: string; mimeType: string; dataUrl: string }>;
+  attachments?: ChatAttachment[];
 }
 
 export class AgentService {
@@ -191,7 +197,9 @@ export class AgentService {
 
       await loadSDK();
       console.log(`[agent-service] Starting query: model=${this.config.model}, provider=${this.config.provider}, cwd=${this.workingDirectory}`);
-      const q = _query({ prompt: message, options: sdkOptions });
+
+      const prompt = this.buildPrompt(message, options?.attachments);
+      const q = _query({ prompt, options: sdkOptions });
       this.activeQuery = q;
 
       try {
@@ -219,6 +227,61 @@ export class AgentService {
     this.abort();
     this.restoreUserSettings();
     await this.stopProxy();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Prompt construction (text + images)
+  // ---------------------------------------------------------------------------
+
+  private buildPrompt(
+    message: string,
+    attachments?: ChatAttachment[],
+  ): string | AsyncIterable<SDKUserMessage> {
+    if (!attachments || attachments.length === 0) {
+      return message;
+    }
+
+    const contentBlocks: Array<Record<string, unknown>> = [];
+
+    for (const att of attachments) {
+      const match = att.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (!match) continue;
+
+      const mediaType = match[1] as string;
+      const data = match[2] as string;
+
+      const supportedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!supportedTypes.includes(mediaType)) continue;
+
+      contentBlocks.push({
+        type: 'image',
+        source: { type: 'base64', media_type: mediaType, data },
+      });
+    }
+
+    if (message.trim()) {
+      contentBlocks.push({ type: 'text', text: message });
+    }
+
+    if (contentBlocks.length === 0) {
+      return message;
+    }
+
+    const userMessage: SDKUserMessage = {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: contentBlocks,
+      } as SDKUserMessage['message'],
+      parent_tool_use_id: null,
+      session_id: this.currentSessionId || '',
+    };
+
+    async function* singleMessage() {
+      yield userMessage;
+    }
+
+    return singleMessage();
   }
 
   // ---------------------------------------------------------------------------

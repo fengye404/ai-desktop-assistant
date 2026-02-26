@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { ChatMessage, SessionMeta } from '../../types';
 import { electronApiClient } from '@/services/electron-api-client';
+import { useChatStore } from './chat-store';
 
 interface SessionState {
   sessions: SessionMeta[];
@@ -42,8 +43,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   createSession: async () => {
     try {
-      // Abort any in-progress query before creating a new session
       await electronApiClient.abortStream();
+      useChatStore.getState().resetStreamState();
+
       const session = await electronApiClient.sessionCreate();
       set({
         currentSessionId: session.id,
@@ -59,8 +61,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (id === get().currentSessionId) return;
 
     try {
-      // Abort any in-progress query before switching
       await electronApiClient.abortStream();
+      useChatStore.getState().resetStreamState();
+
       const session = await electronApiClient.sessionSwitch(id);
       if (!session) return;
 

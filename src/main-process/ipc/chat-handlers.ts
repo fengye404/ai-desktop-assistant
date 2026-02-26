@@ -4,8 +4,10 @@
 
 import { ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../types';
-import type { ModelConfig, StreamChunk } from '../../types';
+import type { ModelConfig, StreamChunk, ChatImageAttachment } from '../../types';
 import type { MainProcessContext } from '../main-process-context';
+import type { ChatAttachment } from '../../agent-service';
+import { convertSdkSessionMessages } from './session-handlers';
 
 function sendStreamChunk(context: MainProcessContext, chunk: StreamChunk): void {
   const window = context.getMainWindow();
@@ -16,14 +18,21 @@ function sendStreamChunk(context: MainProcessContext, chunk: StreamChunk): void 
 export function registerChatHandlers(context: MainProcessContext): void {
   ipcMain.handle(
     IPC_CHANNELS.SEND_MESSAGE_STREAM,
-    async (_event, message: string, systemPrompt?: string) => {
+    async (_event, message: string, systemPrompt?: string, attachments?: ChatImageAttachment[]) => {
       const service = context.getAgentServiceOrThrow();
       const resolvedMessage = context.resolveUserMessage(message);
       const prompt = resolvedMessage.modelMessage || message;
 
+      const chatAttachments: ChatAttachment[] | undefined = attachments?.map((a) => ({
+        name: a.name,
+        mimeType: a.mimeType,
+        dataUrl: a.dataUrl,
+      }));
+
       try {
         const stream = service.sendMessageStream(prompt, {
           systemPrompt,
+          attachments: chatAttachments,
         });
 
         for await (const chunk of stream) {
@@ -91,7 +100,15 @@ export function registerChatHandlers(context: MainProcessContext): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.GET_HISTORY, async () => {
-    return [];
+    try {
+      const service = context.getAgentServiceOrThrow();
+      const sessionId = service.getCurrentSessionId();
+      if (!sessionId) return [];
+      const sdkMessages = await service.getSessionMessages(sessionId);
+      return convertSdkSessionMessages(sdkMessages);
+    } catch {
+      return [];
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.COMPACT_HISTORY, async () => {

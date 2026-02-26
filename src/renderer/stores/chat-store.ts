@@ -34,6 +34,7 @@ interface ChatState {
   approveToolCall: (id: string, updatedPermissions?: import('../../types').PermissionSuggestion[]) => void;
   rejectToolCall: (id: string) => void;
   initStreamListener: () => void;
+  resetStreamState: () => void;
 }
 
 type StreamStateSlice = Pick<ChatState, 'streamItems' | 'pendingApprovalId' | 'isWaitingResponse'>;
@@ -240,6 +241,11 @@ export const useChatStore = create<ChatState>((set, get) => {
     rejectToolCall: (id: string) => {
       updateStreamState((state) => applyRejectToolCallToStreamState(state, id));
       electronApiClient.respondToolApproval({ approved: false });
+    },
+
+    resetStreamState: () => {
+      streamListener?.dispose();
+      set({ isLoading: false, ...createEmptyStreamState() });
     },
 
     initStreamListener: () => {

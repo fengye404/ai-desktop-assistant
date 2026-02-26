@@ -98,7 +98,7 @@ test('auto-allowed approval request sends immediate approval response', () => {
   const harness = createHarness({ isToolAllowed: () => true });
   harness.listener.handleToolApprovalRequest(approvalRequest('read_file'));
 
-  assert.deepEqual(harness.approvalResponses, [true]);
+  assert.deepEqual(harness.approvalResponses, [{ approved: true }]);
   assert.equal(harness.getState().streamItems.length, 0);
 });
 
