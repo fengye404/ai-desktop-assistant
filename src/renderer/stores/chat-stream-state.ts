@@ -122,21 +122,33 @@ export function applyToolUseChunkToStreamState(
     (item) => item.type === 'tool' && item.toolCall.id === toolUse.id,
   );
 
+  const isStreamStart = chunk.toolUseComplete === false;
+  const isStreamEnd = chunk.toolUseComplete === true;
+
   if (existingToolIndex >= 0) {
     const existingItem = items[existingToolIndex];
     if (existingItem.type === 'tool') {
+      const prevStatus = existingItem.toolCall.status;
+
+      let nextStatus = prevStatus;
+      if (isPendingApproval) {
+        nextStatus = 'pending';
+      } else if (isStreamEnd && (prevStatus === 'queued' || prevStatus === 'running')) {
+        nextStatus = 'running';
+      }
+
+      const hasRealInput = Object.keys(toolUse.input).length > 0;
+
       items[existingToolIndex] = {
         type: 'tool',
         toolCall: {
           ...existingItem.toolCall,
-          name: toolUse.name,
-          input: toolUse.input,
-          inputText: chunk.toolUseComplete === false ? (existingItem.toolCall.inputText || '') : undefined,
-          inputStreaming: chunk.toolUseComplete === false,
-          status:
-            existingItem.toolCall.status === 'pending' || isPendingApproval
-              ? 'pending'
-              : existingItem.toolCall.status,
+          name: toolUse.name || existingItem.toolCall.name,
+          input: hasRealInput ? toolUse.input : existingItem.toolCall.input,
+          // Keep inputText as display fallback until real parsed input arrives
+          inputText: (isStreamEnd && hasRealInput) ? undefined : existingItem.toolCall.inputText,
+          inputStreaming: isStreamStart && !isStreamEnd,
+          status: nextStatus,
         },
       };
     }
@@ -148,8 +160,8 @@ export function applyToolUseChunkToStreamState(
         name: toolUse.name,
         input: toolUse.input,
         status: isPendingApproval ? 'pending' : 'queued',
-        inputText: chunk.toolUseComplete === false ? '' : undefined,
-        inputStreaming: chunk.toolUseComplete === false,
+        inputText: isStreamStart ? '' : undefined,
+        inputStreaming: isStreamStart,
       },
     });
   }
@@ -267,6 +279,7 @@ export function applyRejectToolCallToStreamState(state: ChatStreamState, id: str
 export function applyToolApprovalRequestToStreamState(
   state: ChatStreamState,
   toolName: string,
+  approvalMeta?: { decisionReason?: string; blockedPath?: string; suggestions?: unknown[] },
 ): { nextState: ChatStreamState; matchedPendingId: string | null } {
   let matchedPendingId: string | null = null;
 
@@ -279,7 +292,13 @@ export function applyToolApprovalRequestToStreamState(
       matchedPendingId = item.toolCall.id;
       return {
         ...item,
-        toolCall: { ...item.toolCall, status: 'pending' as const },
+        toolCall: {
+          ...item.toolCall,
+          status: 'pending' as const,
+          decisionReason: approvalMeta?.decisionReason,
+          blockedPath: approvalMeta?.blockedPath,
+          suggestions: approvalMeta?.suggestions as import('../../types').PermissionSuggestion[] | undefined,
+        },
       };
     }
 

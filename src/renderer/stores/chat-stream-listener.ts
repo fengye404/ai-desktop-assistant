@@ -16,7 +16,7 @@ interface ChatStreamListenerDependencies {
   onDone: (streamItems: MessageItem[]) => void;
   onError: (message: string) => void;
   isToolAllowed: (tool: string) => boolean;
-  respondToolApproval: (approved: boolean) => void;
+  respondToolApproval: (response: import('../../types').ToolApprovalResponse) => void;
   textFlushIntervalMs?: number;
   toolInputFlushIntervalMs?: number;
 }
@@ -139,6 +139,11 @@ export function createChatStreamListener(deps: ChatStreamListenerDependencies): 
       const toolUse = chunk.toolUse;
       if (!toolUse) return;
 
+      // Flush any tool input buffer for this tool before applying the tool_use chunk
+      if (toolInputBuffer.has(toolUse.id)) {
+        flushToolInputBuffer();
+      }
+
       const isPendingApproval = consumeQueuedApproval(toolUse.name);
       deps.updateState((state) => applyToolUseChunkToStreamState(state, chunk, isPendingApproval));
       return;
@@ -167,12 +172,17 @@ export function createChatStreamListener(deps: ChatStreamListenerDependencies): 
 
   const handleToolApprovalRequest = (request: ToolApprovalRequest) => {
     if (deps.isToolAllowed(request.tool)) {
-      deps.respondToolApproval(true);
+      deps.respondToolApproval({ approved: true });
       return;
     }
 
     deps.updateState((state) => {
-      const { nextState, matchedPendingId } = applyToolApprovalRequestToStreamState(state, request.tool);
+      const approvalMeta = {
+        decisionReason: request.decisionReason,
+        blockedPath: request.blockedPath,
+        suggestions: request.suggestions,
+      };
+      const { nextState, matchedPendingId } = applyToolApprovalRequestToStreamState(state, request.tool, approvalMeta);
       if (!matchedPendingId) {
         queueApprovalForTool(request.tool);
       }

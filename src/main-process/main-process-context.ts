@@ -1,8 +1,18 @@
+/**
+ * MainProcessContext — holds runtime objects for the main process.
+ *
+ * After the Agent SDK migration, this context manages:
+ * - AgentService (replaces ClaudeService)
+ * - SessionStorage (config only, SDK handles messages)
+ * - ToolApprovalCoordinator (bridges SDK canUseTool to renderer)
+ * - McpManager (config only, SDK handles connections)
+ */
+
 import * as fs from 'fs';
 import * as path from 'path';
 import type { BrowserWindow } from 'electron';
 import { app } from 'electron';
-import { ClaudeService } from '../claude-service';
+import { AgentService } from '../agent-service';
 import { SessionStorage } from '../session-storage';
 import type {
   McpRefreshResult,
@@ -10,7 +20,6 @@ import type {
   McpServerStatus,
   McpToolInfo,
   PathAutocompleteItem,
-  ToolApprovalRequest,
 } from '../types';
 import { ServiceNotInitializedError } from '../utils/errors';
 import { ToolApprovalCoordinator } from './tool-approval-coordinator';
@@ -18,31 +27,31 @@ import { FileReferenceResolver, type ResolvedUserMessage } from './chat-input/fi
 import { PathAutocompleteService } from './chat-input/path-autocomplete';
 import { McpManager } from './mcp/mcp-manager';
 
-function buildApprovalDescription(input: Record<string, unknown>): string {
-  return Object.entries(input)
-    .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
-    .join('\n');
-}
-
 function hasPackageJson(targetPath: string): boolean {
   return fs.existsSync(path.join(targetPath, 'package.json'));
 }
 
 function resolveWorkspaceRoot(): string {
+  let appPath: string | undefined;
+  try {
+    appPath = app?.getAppPath();
+  } catch {
+    // app.getAppPath() may throw if called before app is ready in some contexts
+  }
+
   const candidates = [
     process.env.INIT_CWD,
     process.cwd(),
-    app.getAppPath(),
-  ].filter((value): value is string => Boolean(value))
+    appPath,
+  ]
+    .filter((value): value is string => Boolean(value))
     .map((value) => path.resolve(value));
 
   for (const candidate of candidates) {
     if (hasPackageJson(candidate)) {
       if (path.basename(candidate) === 'dist') {
         const parent = path.dirname(candidate);
-        if (hasPackageJson(parent)) {
-          return parent;
-        }
+        if (hasPackageJson(parent)) return parent;
       }
       return candidate;
     }
@@ -51,12 +60,9 @@ function resolveWorkspaceRoot(): string {
   return path.resolve(process.cwd());
 }
 
-/**
- * Holds runtime objects for main process and provides safe access helpers.
- */
 export class MainProcessContext {
   private mainWindow: BrowserWindow | null = null;
-  private claudeService: ClaudeService | null = null;
+  private agentService: AgentService | null = null;
   private sessionStorage: SessionStorage | null = null;
   private readonly workspaceRoot = resolveWorkspaceRoot();
   private readonly fileReferenceResolver = new FileReferenceResolver(this.workspaceRoot);
@@ -75,36 +81,41 @@ export class MainProcessContext {
 
   async initializeServices(): Promise<void> {
     this.sessionStorage = new SessionStorage();
-    this.claudeService = new ClaudeService(this.sessionStorage);
-    this.claudeService.setWorkingDirectory(this.workspaceRoot);
+    this.agentService = new AgentService();
+    this.agentService.setWorkingDirectory(this.workspaceRoot);
 
-    this.claudeService.setToolPermissionCallback(async (toolName, input) => {
-      const request: ToolApprovalRequest = {
-        tool: toolName,
-        input,
-        description: buildApprovalDescription(input),
-      };
-      return this.toolApproval.requestApproval(request);
+    this.agentService.setCanUseTool(async (toolName, input, options) => {
+      return this.toolApproval.requestApproval(toolName, input, options);
     });
 
-    this.ensureInitialSession();
     await this.initializeMcp();
+
+    const config = this.sessionStorage.loadConfig();
+    if (config.provider && config.apiKey) {
+      this.agentService.setConfig({
+        provider: config.provider,
+        apiKey: config.apiKey,
+        baseURL: config.baseURL,
+        model: config.model || 'claude-sonnet-4-6',
+      });
+    }
   }
 
-  cleanup(): void {
+  async cleanup(): Promise<void> {
     this.toolApproval.dispose();
     this.mcpManager.dispose();
-    this.claudeService?.cleanup();
-    this.claudeService = null;
+    await this.agentService?.cleanup();
+    this.agentService = null;
+    this.sessionStorage?.close();
     this.sessionStorage = null;
     this.mainWindow = null;
   }
 
-  getClaudeServiceOrThrow(): ClaudeService {
-    if (!this.claudeService) {
-      throw new ServiceNotInitializedError('Claude service');
+  getAgentServiceOrThrow(): AgentService {
+    if (!this.agentService) {
+      throw new ServiceNotInitializedError('Agent service');
     }
-    return this.claudeService;
+    return this.agentService;
   }
 
   getSessionStorageOrThrow(): SessionStorage {
@@ -122,6 +133,8 @@ export class MainProcessContext {
     return this.pathAutocompleteService.suggest(partialPath);
   }
 
+  // MCP operations
+
   listMcpServers(): McpServerStatus[] {
     return this.mcpManager.listServerStatus();
   }
@@ -131,62 +144,36 @@ export class MainProcessContext {
   }
 
   async refreshMcp(): Promise<McpRefreshResult> {
-    const result = await this.mcpManager.refresh();
-    this.syncMcpToolsToClaudeService();
-    return result;
+    return this.mcpManager.refresh();
   }
 
   async upsertMcpServer(name: string, config: McpServerConfig): Promise<McpRefreshResult> {
     const storage = this.getSessionStorageOrThrow();
-    const nextConfig = this.mcpManager.getServerConfigSnapshot();
-    nextConfig[name] = config;
-    storage.saveMcpServers(nextConfig);
-
-    this.mcpManager.setServers(nextConfig);
-    const result = await this.mcpManager.refresh();
-    this.syncMcpToolsToClaudeService();
-    return result;
+    this.mcpManager.upsertServer(name, config);
+    const allConfig = this.mcpManager.getServerConfig();
+    storage.saveMcpServers(allConfig);
+    this.syncMcpToAgent();
+    return this.mcpManager.refresh();
   }
 
   async removeMcpServer(name: string): Promise<McpRefreshResult> {
     const storage = this.getSessionStorageOrThrow();
-    const nextConfig = this.mcpManager.getServerConfigSnapshot();
-    delete nextConfig[name];
-    storage.saveMcpServers(nextConfig);
-
-    this.mcpManager.setServers(nextConfig);
-    const result = await this.mcpManager.refresh();
-    this.syncMcpToolsToClaudeService();
-    return result;
-  }
-
-  private ensureInitialSession(): void {
-    const storage = this.getSessionStorageOrThrow();
-    const sessions = storage.listSessions();
-
-    if (sessions.length === 0) {
-      storage.createSession();
-      return;
-    }
-
-    storage.switchSession(sessions[0].id);
+    this.mcpManager.removeServer(name);
+    const allConfig = this.mcpManager.getServerConfig();
+    storage.saveMcpServers(allConfig);
+    this.syncMcpToAgent();
+    return this.mcpManager.refresh();
   }
 
   private async initializeMcp(): Promise<void> {
     const storage = this.getSessionStorageOrThrow();
     const configuredServers = storage.loadMcpServers();
     this.mcpManager.setServers(configuredServers);
-
-    try {
-      await this.mcpManager.refresh();
-      this.syncMcpToolsToClaudeService();
-    } catch (error) {
-      console.error('[mcp] initialize failed:', error);
-    }
+    this.syncMcpToAgent();
   }
 
-  private syncMcpToolsToClaudeService(): void {
-    const service = this.getClaudeServiceOrThrow();
-    service.setDynamicTools(this.mcpManager.getDynamicTools());
+  private syncMcpToAgent(): void {
+    const service = this.getAgentServiceOrThrow();
+    service.setMcpServers(this.mcpManager.getServerConfig());
   }
 }

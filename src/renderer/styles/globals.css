@@ -291,6 +291,24 @@ pre code {
   will-change: opacity, transform;
 }
 
+/* Model selector: compact dropdown reveal */
+@keyframes modelSelectorIn {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.model-selector-panel {
+  animation: modelSelectorIn 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: top right;
+  will-change: opacity, transform;
+}
+
 /* Thinking text */
 @keyframes textFade {
   0%, 100% {

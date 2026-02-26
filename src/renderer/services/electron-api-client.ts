@@ -16,6 +16,7 @@ import type {
   SessionMeta,
   StreamChunk,
   ToolApprovalRequest,
+  ToolApprovalResponse,
 } from '../../types';
 
 let missingApiWarningPrinted = false;
@@ -198,9 +199,9 @@ export const electronApiClient = {
     api.onToolApprovalRequest(callback);
   },
 
-  respondToolApproval: (approved: boolean) => {
+  respondToolApproval: (response: ToolApprovalResponse) => {
     const api = getApiOrNull();
     if (!api) return;
-    api.respondToolApproval(approved);
+    api.respondToolApproval(response);
   },
 };

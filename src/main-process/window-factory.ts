@@ -136,7 +136,7 @@ export function createMainWindow(options: CreateMainWindowOptions): BrowserWindo
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, '../preload.js'),
+      preload: path.join(__dirname, 'preload.js'),
     },
     titleBarStyle: 'hiddenInset',
     vibrancy: 'under-window',
@@ -151,7 +151,7 @@ export function createMainWindow(options: CreateMainWindowOptions): BrowserWindo
     void window.loadURL('http://localhost:5173');
     window.webContents.openDevTools();
   } else {
-    void window.loadFile(path.join(__dirname, '../renderer/index.html'));
+    void window.loadFile(path.join(__dirname, 'renderer/index.html'));
   }
 
   window.webContents.on('before-input-event', (_event, input) => {

@@ -29,6 +29,9 @@ export interface ToolCallRecord {
   inputStreaming?: boolean;
   output?: string;
   error?: string;
+  decisionReason?: string;
+  blockedPath?: string;
+  suggestions?: PermissionSuggestion[];
 }
 
 /**
@@ -182,63 +185,41 @@ export interface ToolInputDeltaInfo {
   accumulated: string;
 }
 
-// ==================== Tool System Types ====================
+// ==================== Tool Approval Types ====================
 
 /**
- * Permission level for tool execution
+ * SDK permission suggestion — forwarded from the SDK's canUseTool callback.
+ * When returned as updatedPermissions, the SDK permanently adds the rule
+ * so the user is never prompted for this particular action again.
  */
-export type ToolPermission = 'allow' | 'ask' | 'deny';
+export type PermissionSuggestion = {
+  type: string;
+  rules?: unknown[];
+  behavior?: string;
+  destination?: string;
+  mode?: string;
+  directories?: string[];
+};
 
 /**
- * Tool definition following Anthropic's schema
- */
-export interface ToolDefinition {
-  name: string;
-  description: string;
-  input_schema: {
-    type: 'object';
-    properties: Record<string, {
-      type: string;
-      description: string;
-      enum?: string[];
-    }>;
-    required?: string[];
-  };
-  permission: ToolPermission;
-}
-
-/**
- * Tool execution result
- */
-export interface ToolResult {
-  success: boolean;
-  output?: string;
-  error?: string;
-}
-
-/**
- * Tool use request from AI
- */
-export interface ToolUseRequest {
-  id: string;
-  name: string;
-  input: Record<string, unknown>;
-}
-
-/**
- * Tool approval request to renderer
+ * Tool approval request to renderer (from SDK canUseTool callback)
  */
 export interface ToolApprovalRequest {
   tool: string;
   input: Record<string, unknown>;
   description: string;
+  toolUseID: string;
+  decisionReason?: string;
+  blockedPath?: string;
+  suggestions?: PermissionSuggestion[];
 }
 
 /**
- * Tool approval response from renderer
+ * Tool approval response from renderer — now structured.
  */
 export interface ToolApprovalResponse {
   approved: boolean;
+  updatedPermissions?: PermissionSuggestion[];
 }
 
 /**
@@ -429,7 +410,7 @@ export interface ElectronAPI {
 
   // Tool system
   onToolApprovalRequest: (callback: (request: ToolApprovalRequest) => void) => void;
-  respondToolApproval: (approved: boolean) => void;
+  respondToolApproval: (response: ToolApprovalResponse) => void;
 }
 
 /**

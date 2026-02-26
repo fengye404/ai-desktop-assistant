@@ -31,7 +31,7 @@ interface ChatState {
   cancelStream: () => Promise<void>;
   clearHistory: () => Promise<void>;
   rewindLastTurn: () => Promise<RewindHistoryResult>;
-  approveToolCall: (id: string) => void;
+  approveToolCall: (id: string, updatedPermissions?: import('../../types').PermissionSuggestion[]) => void;
   rejectToolCall: (id: string) => void;
   initStreamListener: () => void;
 }
@@ -232,14 +232,14 @@ export const useChatStore = create<ChatState>((set, get) => {
       return result;
     },
 
-    approveToolCall: (id: string) => {
+    approveToolCall: (id: string, updatedPermissions?: import('../../types').PermissionSuggestion[]) => {
       updateStreamState((state) => applyApproveToolCallToStreamState(state, id));
-      electronApiClient.respondToolApproval(true);
+      electronApiClient.respondToolApproval({ approved: true, updatedPermissions });
     },
 
     rejectToolCall: (id: string) => {
       updateStreamState((state) => applyRejectToolCallToStreamState(state, id));
-      electronApiClient.respondToolApproval(false);
+      electronApiClient.respondToolApproval({ approved: false });
     },
 
     initStreamListener: () => {
@@ -278,7 +278,7 @@ export const useChatStore = create<ChatState>((set, get) => {
           set({ isLoading: false, ...createEmptyStreamState() });
         },
         isToolAllowed: (tool) => useConfigStore.getState().isToolAllowed(tool),
-        respondToolApproval: (approved) => electronApiClient.respondToolApproval(approved),
+        respondToolApproval: (response) => electronApiClient.respondToolApproval(response),
       });
 
       electronApiClient.onStreamChunk(streamListener.handleChunk);

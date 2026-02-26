@@ -13,6 +13,7 @@ import type {
   RewindHistoryResult,
   StreamChunk,
   ToolApprovalRequest,
+  ToolApprovalResponse,
 } from './types';
 
 let streamChunkListener: ((_event: Electron.IpcRendererEvent, chunk: unknown) => void) | null = null;
@@ -172,8 +173,8 @@ const electronAPI: ElectronAPI = {
     );
   },
 
-  respondToolApproval: (approved: boolean) =>
-    ipcRenderer.send(IPC_CHANNELS.TOOL_APPROVAL_RESPONSE, approved),
+  respondToolApproval: (response: ToolApprovalResponse) =>
+    ipcRenderer.send(IPC_CHANNELS.TOOL_APPROVAL_RESPONSE, response),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

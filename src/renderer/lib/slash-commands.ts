@@ -1,3 +1,13 @@
+/**
+ * Slash command definitions and parser.
+ *
+ * After the SDK migration:
+ * - /clear and /compact are delegated to the SDK (sent as prompts)
+ * - /config and /model remain UI-only operations
+ * - /help shows combined built-in + SDK commands
+ * - SDK slash commands from .claude/commands/ are included in suggestions
+ */
+
 export interface ParsedSlashCommand {
   raw: string;
   name: string;
@@ -8,7 +18,10 @@ export interface SlashCommandDefinition {
   name: string;
   usage: string;
   description: string;
+  isSDK?: boolean;
 }
+
+export type SlashCommandAction = 'sdk' | 'ui-config' | 'ui-model' | 'help';
 
 export const BUILT_IN_SLASH_COMMANDS: SlashCommandDefinition[] = [
   {
@@ -19,12 +32,14 @@ export const BUILT_IN_SLASH_COMMANDS: SlashCommandDefinition[] = [
   {
     name: 'clear',
     usage: '/clear',
-    description: '清空当前会话',
+    description: '清空当前会话（SDK 处理）',
+    isSDK: true,
   },
   {
     name: 'compact',
     usage: '/compact',
-    description: '压缩历史上下文，保留关键记录',
+    description: '压缩历史上下文（SDK 处理）',
+    isSDK: true,
   },
   {
     name: 'config',
@@ -38,37 +53,56 @@ export const BUILT_IN_SLASH_COMMANDS: SlashCommandDefinition[] = [
   },
 ];
 
+let sdkCommands: SlashCommandDefinition[] = [];
+
+export function setSdkSlashCommands(commands: Array<{ name: string; description?: string; argumentHint?: string }>): void {
+  sdkCommands = commands
+    .filter((c) => !BUILT_IN_SLASH_COMMANDS.some((b) => b.name === c.name))
+    .map((c) => ({
+      name: c.name,
+      usage: c.argumentHint ? `/${c.name} ${c.argumentHint}` : `/${c.name}`,
+      description: c.description || `SDK 命令: ${c.name}`,
+      isSDK: true,
+    }));
+}
+
+export function getAllSlashCommands(): SlashCommandDefinition[] {
+  return [...BUILT_IN_SLASH_COMMANDS, ...sdkCommands];
+}
+
+export function getCommandAction(name: string): SlashCommandAction {
+  if (name === 'config') return 'ui-config';
+  if (name === 'model') return 'ui-model';
+  if (name === 'help') return 'help';
+  return 'sdk';
+}
+
 export function parseSlashCommand(input: string): ParsedSlashCommand | null {
   const trimmed = input.trim();
-  if (!trimmed.startsWith('/')) {
-    return null;
-  }
+  if (!trimmed.startsWith('/')) return null;
 
   const withoutPrefix = trimmed.slice(1).trim();
-  if (!withoutPrefix) {
-    return null;
-  }
+  if (!withoutPrefix) return null;
 
   const segments = withoutPrefix.split(/\s+/).filter(Boolean);
-  if (segments.length === 0) {
-    return null;
-  }
+  if (segments.length === 0) return null;
 
   const [name, ...args] = segments;
-  return {
-    raw: trimmed,
-    name: name.toLowerCase(),
-    args,
-  };
+  return { raw: trimmed, name: name.toLowerCase(), args };
 }
 
 export function formatSlashCommandHelp(): string {
+  const allCommands = getAllSlashCommands();
   const lines = [
     '可用斜杠命令:',
-    ...BUILT_IN_SLASH_COMMANDS.map((command) => `- \`${command.usage}\`：${command.description}`),
+    ...allCommands.map((command) => {
+      const sdkTag = command.isSDK ? ' (SDK)' : '';
+      return `- \`${command.usage}\`：${command.description}${sdkTag}`;
+    }),
     '',
     '补充:',
     '- 支持 `@路径` 引用文件，例如 `@src/main.ts` 或 `@src/main.ts:10-40`',
+    '- SDK 命令会直接发送给 Agent 处理',
   ];
 
   return lines.join('\n');
@@ -76,11 +110,11 @@ export function formatSlashCommandHelp(): string {
 
 export function getSlashCommandSuggestions(query: string): SlashCommandDefinition[] {
   const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return BUILT_IN_SLASH_COMMANDS;
-  }
+  const allCommands = getAllSlashCommands();
 
-  return BUILT_IN_SLASH_COMMANDS
+  if (!normalizedQuery) return allCommands;
+
+  return allCommands
     .filter((command) => command.name.startsWith(normalizedQuery))
     .sort((left, right) => left.name.localeCompare(right.name));
 }

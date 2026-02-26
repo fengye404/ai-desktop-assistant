@@ -42,6 +42,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   createSession: async () => {
     try {
+      // Abort any in-progress query before creating a new session
+      await electronApiClient.abortStream();
       const session = await electronApiClient.sessionCreate();
       set({
         currentSessionId: session.id,
@@ -57,6 +59,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (id === get().currentSessionId) return;
 
     try {
+      // Abort any in-progress query before switching
+      await electronApiClient.abortStream();
       const session = await electronApiClient.sessionSwitch(id);
       if (!session) return;
 

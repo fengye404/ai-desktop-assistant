@@ -2,7 +2,16 @@
 
 // Types defined locally to avoid module import issues in browser
 type Provider = 'anthropic' | 'openai';
-type ChunkType = 'text' | 'thinking' | 'error' | 'done' | 'tool_use' | 'tool_result';
+type ChunkType =
+  | 'text'
+  | 'thinking'
+  | 'error'
+  | 'done'
+  | 'tool_use'
+  | 'tool_start'
+  | 'tool_input_delta'
+  | 'tool_result'
+  | 'processing';
 type MessageRole = 'user' | 'assistant';
 
 interface ModelConfig {
@@ -19,10 +28,19 @@ interface ToolUseInfo {
   input: Record<string, unknown>;
 }
 
+interface ToolInputDeltaInfo {
+  id: string;
+  name: string;
+  delta: string;
+  accumulated: string;
+}
+
 interface StreamChunk {
   type: ChunkType;
   content: string;
   toolUse?: ToolUseInfo;
+  toolUseComplete?: boolean;
+  toolInputDelta?: ToolInputDeltaInfo;
 }
 
 interface ToolApprovalRequest {
@@ -662,12 +680,12 @@ class ChatApp {
     const denyBtn = this.toolApprovalDialog.querySelector('.deny');
 
     approveBtn?.addEventListener('click', () => {
-      window.electronAPI.respondToolApproval(true);
+      window.electronAPI.respondToolApproval({ approved: true });
       this.hideToolApprovalDialog();
     });
 
     denyBtn?.addEventListener('click', () => {
-      window.electronAPI.respondToolApproval(false);
+      window.electronAPI.respondToolApproval({ approved: false });
       this.hideToolApprovalDialog();
     });
 

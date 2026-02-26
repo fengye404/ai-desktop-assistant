@@ -1,22 +1,44 @@
 import { memo, useEffect, useState } from 'react';
-import { ChevronRight, ChevronDown, Terminal, CheckCircle2, XCircle, Loader2, AlertTriangle, Check, X, ShieldCheck, ShieldPlus } from 'lucide-react';
+import {
+  ChevronRight,
+  ChevronDown,
+  Terminal,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  AlertTriangle,
+  Check,
+  X,
+  ShieldCheck,
+  ShieldPlus,
+  Info,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
-import type { ToolCallRecord } from '../../types';
+import type { ToolCallRecord, PermissionSuggestion } from '../../types';
 
-// Re-export for backward compatibility
 export type ToolCall = ToolCallRecord;
 
 interface ToolCallBlockProps {
   toolCall: ToolCall;
-  onApprove?: (id: string) => void;
+  onApprove?: (id: string, updatedPermissions?: PermissionSuggestion[]) => void;
   onReject?: (id: string) => void;
-  onAllowForSession?: (toolName: string) => void;  // 本次会话允许该工具
-  onAllowAllForSession?: () => void;  // 本次会话允许所有工具
+  onAllowForSession?: (toolName: string) => void;
+  onAllowAllForSession?: () => void;
 }
 
-// 工具名称映射为更友好的显示
 const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  Read: '读取文件',
+  Write: '写入文件',
+  Edit: '编辑文件',
+  MultiEdit: '批量编辑',
+  Bash: '执行命令',
+  Glob: '文件匹配',
+  Grep: '内容搜索',
+  WebSearch: '网页搜索',
+  WebFetch: '获取网页',
+  Task: '子任务',
+  TaskOutput: '任务输出',
   read_file: '读取文件',
   write_file: '写入文件',
   edit_file: '编辑文件',
@@ -41,7 +63,6 @@ export const ToolCallBlock = memo(function ToolCallBlock({
   const isInputStreaming = toolCall.inputStreaming === true;
   const streamedInputLength = toolCall.inputText?.length ?? 0;
 
-  // Auto-expand whenever approval is needed or input arguments are streaming.
   useEffect(() => {
     if (isPending || isInputStreaming) {
       setIsExpanded(true);
@@ -50,35 +71,40 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 
   const displayName = TOOL_DISPLAY_NAMES[toolCall.name] || toolCall.name;
 
-  // 获取主要参数用于显示
   const getMainParam = () => {
+    if (toolCall.input.file_path) return toolCall.input.file_path as string;
     if (toolCall.input.path) return toolCall.input.path as string;
     if (toolCall.input.command) return toolCall.input.command as string;
     if (toolCall.input.url) return toolCall.input.url as string;
     if (toolCall.input.pattern) return toolCall.input.pattern as string;
+    if (toolCall.input.description) return toolCall.input.description as string;
     return null;
   };
 
   const mainParam = getMainParam();
+  const hasRealInput = Object.keys(toolCall.input).length > 0;
   const inputDisplay = isInputStreaming
     ? (toolCall.inputText || '(参数生成中...)')
-    : JSON.stringify(toolCall.input, null, 2);
+    : hasRealInput
+      ? JSON.stringify(toolCall.input, null, 2)
+      : (toolCall.inputText || '(等待参数...)');
+
+  const hasSuggestions = (toolCall.suggestions?.length ?? 0) > 0;
 
   return (
     <div className={cn(
       'my-2 rounded-xl border overflow-hidden shadow-[0_8px_24px_hsl(var(--background)/0.45)]',
       isPending
-        ? 'border-primary/45 bg-primary/10'
+        ? 'border-amber-500/50 bg-amber-500/8 dark:border-amber-400/40 dark:bg-amber-400/6'
         : isQueued
           ? 'border-border/70 bg-muted/35'
           : 'border-border/60 bg-secondary/35'
     )}>
-      {/* Header - 可点击展开/折叠 */}
+      {/* Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className='w-full flex items-center gap-2 px-3 py-2.5 hover:bg-secondary/65 transition-colors text-left'
       >
-        {/* 展开/折叠图标 */}
         <span className='text-muted-foreground'>
           {isExpanded ? (
             <ChevronDown className='h-4 w-4' />
@@ -87,17 +113,16 @@ export const ToolCallBlock = memo(function ToolCallBlock({
           )}
         </span>
 
-        {/* 工具图标 */}
         <div className={cn(
           'w-7 h-7 rounded-lg flex items-center justify-center border border-border/40',
-          toolCall.status === 'pending' && 'bg-primary/20 border-primary/35',
+          toolCall.status === 'pending' && 'bg-amber-500/20 border-amber-500/35',
           toolCall.status === 'queued' && 'bg-muted/45',
           toolCall.status === 'running' && 'bg-[hsl(var(--cool-accent)/0.18)] border-[hsl(var(--cool-accent)/0.35)]',
           toolCall.status === 'success' && 'bg-primary/18 border-primary/32',
           toolCall.status === 'error' && 'bg-destructive/20 border-destructive/35'
         )}>
           {isPending ? (
-            <AlertTriangle className='h-3.5 w-3.5 text-primary' />
+            <AlertTriangle className='h-3.5 w-3.5 text-amber-500 dark:text-amber-400' />
           ) : (
             <Terminal className={cn(
               'h-3.5 w-3.5',
@@ -109,22 +134,21 @@ export const ToolCallBlock = memo(function ToolCallBlock({
           )}
         </div>
 
-        {/* 工具名称和参数 */}
         <div className="flex-1 min-w-0">
           {isPending && (
-            <span className='mr-2 text-[11px] uppercase tracking-[0.1em] text-primary/95'>Pending</span>
+            <span className='mr-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-amber-600 dark:text-amber-400'>需要确认</span>
           )}
           {isQueued && !isPending && (
-            <span className='mr-2 text-[11px] uppercase tracking-[0.1em] text-muted-foreground'>Queued</span>
+            <span className='mr-2 text-[11px] uppercase tracking-[0.1em] text-muted-foreground'>排队中</span>
           )}
           {isInputStreaming && !isPending && (
-            <span className='mr-2 text-[11px] uppercase tracking-[0.1em] text-[hsl(var(--cool-accent))]'>Streaming</span>
+            <span className='mr-2 text-[11px] uppercase tracking-[0.1em] text-[hsl(var(--cool-accent))]'>生成中</span>
           )}
           <span className='text-sm font-medium text-foreground'>{displayName}</span>
           {mainParam && (
             <span className='ml-2 text-xs text-muted-foreground truncate'>
               <code className='bg-background/50 px-1.5 py-0.5 rounded text-primary/80'>
-                {mainParam.length > 40 ? mainParam.substring(0, 40) + '...' : mainParam}
+                {mainParam.length > 50 ? mainParam.substring(0, 50) + '...' : mainParam}
               </code>
             </span>
           )}
@@ -135,7 +159,6 @@ export const ToolCallBlock = memo(function ToolCallBlock({
           )}
         </div>
 
-        {/* 状态图标 */}
         <div className='flex items-center gap-2'>
           {toolCall.status === 'queued' && (
             <Loader2 className='h-4 w-4 text-muted-foreground' />
@@ -152,10 +175,29 @@ export const ToolCallBlock = memo(function ToolCallBlock({
         </div>
       </button>
 
-      {/* 展开内容 */}
+      {/* Expanded Content */}
       {isExpanded && (
         <div className='border-t border-border/50 bg-background/35'>
-          {/* 输入参数 */}
+          {/* Decision Reason */}
+          {isPending && toolCall.decisionReason && (
+            <div className='px-3 py-2 border-b border-border/30 bg-amber-500/5 dark:bg-amber-400/4'>
+              <div className='flex items-start gap-2'>
+                <Info className='h-3.5 w-3.5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0' />
+                <p className='text-xs text-amber-700 dark:text-amber-300/90'>
+                  {toolCall.decisionReason}
+                </p>
+              </div>
+              {toolCall.blockedPath && (
+                <div className='mt-1.5 ml-5.5'>
+                  <code className='text-xs bg-amber-500/10 dark:bg-amber-400/10 px-1.5 py-0.5 rounded text-amber-700 dark:text-amber-300/80 border border-amber-500/20'>
+                    {toolCall.blockedPath}
+                  </code>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Input Parameters */}
           <div className='px-3 py-2.5 border-b border-border/30'>
             <div className='text-xs font-medium text-muted-foreground mb-1.5'>
               输入参数
@@ -171,11 +213,25 @@ export const ToolCallBlock = memo(function ToolCallBlock({
             </pre>
           </div>
 
-          {/* 待确认状态 - 显示操作按钮 */}
+          {/* Pending Approval Actions */}
           {isPending && (
-            <div className='px-3 py-3 space-y-2'>
-              {/* 快捷选项 */}
-              <div className='flex items-center gap-2'>
+            <div className='px-3 py-3 space-y-2.5'>
+              {/* Quick Actions */}
+              <div className='flex items-center gap-2 flex-wrap'>
+                {hasSuggestions && (
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onApprove?.(toolCall.id, toolCall.suggestions);
+                    }}
+                    className='gap-1.5 text-xs text-amber-700 dark:text-amber-300 hover:text-amber-800 dark:hover:text-amber-200 h-7 px-2.5 bg-amber-500/8 border border-amber-500/25 hover:bg-amber-500/15 dark:bg-amber-400/8 dark:border-amber-400/20 dark:hover:bg-amber-400/15'
+                  >
+                    <ShieldCheck className='h-3.5 w-3.5' />
+                    永久允许该操作
+                  </Button>
+                )}
                 <Button
                   variant='ghost'
                   size='sm'
@@ -184,10 +240,10 @@ export const ToolCallBlock = memo(function ToolCallBlock({
                     onAllowForSession?.(toolCall.name);
                     onApprove?.(toolCall.id);
                   }}
-                  className='gap-1.5 text-xs text-muted-foreground hover:text-primary h-7 px-2 bg-secondary/40 border border-border/45 hover:bg-secondary/70'
+                  className='gap-1.5 text-xs text-muted-foreground hover:text-primary h-7 px-2.5 bg-secondary/40 border border-border/45 hover:bg-secondary/70'
                 >
                   <ShieldCheck className='h-3.5 w-3.5' />
-                  本次会话允许该工具
+                  本次会话允许
                 </Button>
                 <Button
                   variant='ghost'
@@ -197,13 +253,14 @@ export const ToolCallBlock = memo(function ToolCallBlock({
                     onAllowAllForSession?.();
                     onApprove?.(toolCall.id);
                   }}
-                  className='gap-1.5 text-xs text-muted-foreground hover:text-primary h-7 px-2 bg-secondary/40 border border-border/45 hover:bg-secondary/70'
+                  className='gap-1.5 text-xs text-muted-foreground hover:text-primary h-7 px-2.5 bg-secondary/40 border border-border/45 hover:bg-secondary/70'
                 >
                   <ShieldPlus className='h-3.5 w-3.5' />
-                  本次会话允许所有
+                  全部允许
                 </Button>
               </div>
-              {/* 主按钮 */}
+
+              {/* Primary Actions */}
               <div className='flex items-center justify-end gap-2'>
                 <Button
                   variant='outline'
@@ -212,10 +269,10 @@ export const ToolCallBlock = memo(function ToolCallBlock({
                     e.stopPropagation();
                     onReject?.(toolCall.id);
                   }}
-                  className='gap-1.5 text-muted-foreground'
+                  className='gap-1.5 text-muted-foreground hover:text-destructive hover:border-destructive/40'
                 >
                   <X className='h-3.5 w-3.5' />
-                  取消
+                  拒绝
                 </Button>
                 <Button
                   size='sm'
@@ -232,7 +289,7 @@ export const ToolCallBlock = memo(function ToolCallBlock({
             </div>
           )}
 
-          {/* 输出结果 */}
+          {/* Output */}
           {(toolCall.output || toolCall.error) && (
             <div className='px-3 py-2.5'>
               <div className='text-xs font-medium text-muted-foreground mb-1.5'>
@@ -256,12 +313,9 @@ export const ToolCallBlock = memo(function ToolCallBlock({
 
 ToolCallBlock.displayName = 'ToolCallBlock';
 
-/**
- * 渲染多个工具调用块
- */
 interface ToolCallListProps {
   toolCalls: ToolCall[];
-  onApprove?: (id: string) => void;
+  onApprove?: (id: string, updatedPermissions?: PermissionSuggestion[]) => void;
   onReject?: (id: string) => void;
   onAllowForSession?: (toolName: string) => void;
   onAllowAllForSession?: () => void;
@@ -273,9 +327,9 @@ export function ToolCallList({ toolCalls, onApprove, onReject, onAllowForSession
   return (
     <div className="space-y-1">
       {toolCalls.map((toolCall) => (
-        <ToolCallBlock 
-          key={toolCall.id} 
-          toolCall={toolCall} 
+        <ToolCallBlock
+          key={toolCall.id}
+          toolCall={toolCall}
           onApprove={onApprove}
           onReject={onReject}
           onAllowForSession={onAllowForSession}
