@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { StreamChunk, ToolApprovalRequest } from '../../../types';
+import type { StreamChunk, ToolApprovalRequest, ToolApprovalResponse } from '../../../types';
 import { createChatStreamListener } from '../chat-stream-listener';
 import { getInitialChatStreamState, type ChatStreamState } from '../chat-stream-state';
 
 function createHarness(options?: { isToolAllowed?: (tool: string) => boolean }) {
   let state: ChatStreamState = getInitialChatStreamState();
-  const approvalResponses: boolean[] = [];
+  const approvalResponses: ToolApprovalResponse[] = [];
   const donePayloads: Array<Array<{ type: string }>> = [];
   const errors: string[] = [];
 
@@ -22,8 +22,8 @@ function createHarness(options?: { isToolAllowed?: (tool: string) => boolean }) 
       errors.push(message);
     },
     isToolAllowed: options?.isToolAllowed ?? (() => false),
-    respondToolApproval: (approved) => {
-      approvalResponses.push(approved);
+    respondToolApproval: (response) => {
+      approvalResponses.push(response);
     },
     textFlushIntervalMs: 2000,
     toolInputFlushIntervalMs: 2000,
@@ -60,6 +60,7 @@ function approvalRequest(tool: string): ToolApprovalRequest {
     tool,
     input: {},
     description: '',
+    toolUseID: `test-${tool}`,
   };
 }
 

@@ -59,13 +59,12 @@ export function convertSdkSessionMessages(sdkMessages: SdkSessionMsg[]): ChatMes
       } else if (block.type === 'tool_use' && typeof block.name === 'string') {
         items.push({
           type: 'tool',
-          content: '',
           toolCall: {
             id: String(block.id || ''),
             name: String(block.name || ''),
             input: (block.input || {}) as Record<string, unknown>,
-            status: 'complete' as const,
-            result: '',
+            status: 'success' as const,
+            output: '',
           },
         });
       } else if (block.type === 'tool_result') {
@@ -81,7 +80,7 @@ export function convertSdkSessionMessages(sdkMessages: SdkSessionMsg[]): ChatMes
         }
         for (const item of items) {
           if (item.type === 'tool' && item.toolCall?.id === toolUseId) {
-            item.toolCall.result = resultText;
+            item.toolCall.output = resultText;
             break;
           }
         }

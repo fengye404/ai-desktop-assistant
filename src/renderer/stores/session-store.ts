@@ -14,6 +14,7 @@ interface SessionState {
   deleteSession: (id: string) => Promise<void>;
   renameSession: (id: string, title: string) => Promise<void>;
   setCurrentMessages: (messages: ChatMessage[]) => void;
+  applySessionSwitch: (sessionId: string, messages: ChatMessage[]) => void;
   refreshSessions: () => Promise<void>;
 }
 
@@ -106,6 +107,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   setCurrentMessages: (messages) => set({ currentMessages: messages }),
+
+  applySessionSwitch: (sessionId, messages) => set({ currentSessionId: sessionId, currentMessages: messages }),
 
   refreshSessions: async () => {
     try {
