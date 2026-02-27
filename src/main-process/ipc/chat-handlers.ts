@@ -39,7 +39,6 @@ export function registerChatHandlers(context: MainProcessContext): void {
           sendStreamChunk(context, chunk);
         }
 
-        sendStreamChunk(context, { type: 'done', content: '' });
         return true;
       } catch (error) {
         console.error('[main] Stream error:', error);

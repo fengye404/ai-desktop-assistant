@@ -84,6 +84,7 @@ export class AgentService {
   private workingDirectory: string = process.cwd();
 
   private canUseToolCallback: CanUseTool | null = null;
+  private onSessionInitCallback: ((sessionId: string) => void) | null = null;
 
   constructor() {
     this.config = {
@@ -104,6 +105,10 @@ export class AgentService {
 
   setCanUseTool(callback: CanUseTool): void {
     this.canUseToolCallback = callback;
+  }
+
+  setOnSessionInit(callback: (sessionId: string) => void): void {
+    this.onSessionInitCallback = callback;
   }
 
   setMcpServers(servers: McpServersConfig): void {
@@ -449,6 +454,9 @@ export class AgentService {
         description: '',
         argumentHint: '',
       }));
+      if (msg.session_id && this.onSessionInitCallback) {
+        this.onSessionInitCallback(msg.session_id);
+      }
     }
     return [];
   }

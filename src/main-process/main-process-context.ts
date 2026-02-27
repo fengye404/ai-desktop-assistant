@@ -88,6 +88,14 @@ export class MainProcessContext {
       return this.toolApproval.requestApproval(toolName, input, options);
     });
 
+    this.agentService.setOnSessionInit((sessionId) => {
+      try {
+        this.sessionStorage?.registerSession(sessionId);
+      } catch (err) {
+        console.error('[main-process] Failed to register session:', err);
+      }
+    });
+
     await this.initializeMcp();
 
     const config = this.sessionStorage.loadConfig();

@@ -8,7 +8,7 @@
 - [页面展示与性能优化记录（2026-02-21）](./ui-performance-optimization-2026-02-21.md)
 - [UI 视觉修复记录（2026-02-21）](./ui-visual-polish-2026-02-21.md)
 - [主题色规范（2026-02-22）](./theme-color-spec-2026-02-22.md)
-- [Icon 处理与替换手册（临时，2026-02-23）](./icon-branding-workflow-temporary-2026-02-23.md)
+- [Icon 处理与替换手册（2026-02-23）](./icon-branding-workflow-temporary-2026-02-23.md)
 
 ## 快速开始
 
@@ -24,43 +24,42 @@ npm install
 npm start
 ```
 
-### 3. 配置 API
+### 3. 配置提供商
 
-点击右上角的 **Settings** 按钮，配置 API 信息后点击"保存配置"。
+打开设置面板，配置 AI 提供商信息（提供商名称、协议、API Key、模型）。
 
 ## API 配置
 
-### 支持的 API 类型
+### 支持的提供商类型
 
-| API 类型 | 说明 | 适用场景 |
+| 协议类型 | 说明 | 实现方式 |
 |---------|------|---------|
-| Anthropic API | Anthropic 官方 API | Anthropic 系列模型 |
-| OpenAI 兼容 API | 任何 OpenAI 兼容服务 | OpenAI、Ollama、DeepSeek 等 |
+| Anthropic | Claude 系列模型 | Agent SDK 直连 |
+| OpenAI 兼容 | 任何 OpenAI 兼容服务 | 本地协议翻译代理 |
 
 ### 配置示例
 
-#### Anthropic API (Anthropic)
+#### Anthropic (Claude)
 
 ```
-API 类型: Anthropic API (Anthropic)
-模型: claude-opus-4-6
+协议: Anthropic
+模型: claude-sonnet-4-6
 API Key: sk-ant-xxxxx
-Base URL: (留空使用官方)
 ```
 
 #### OpenAI
 
 ```
-API 类型: OpenAI 兼容 API
+协议: OpenAI 兼容
 模型: gpt-4o
 API Key: sk-xxxxx
-Base URL: (留空使用默认)
+Base URL: https://api.openai.com/v1
 ```
 
 #### DeepSeek
 
 ```
-API 类型: OpenAI 兼容 API
+协议: OpenAI 兼容
 模型: deepseek-chat
 API Key: sk-xxxxx
 Base URL: https://api.deepseek.com/v1
@@ -69,16 +68,16 @@ Base URL: https://api.deepseek.com/v1
 #### Ollama (本地)
 
 ```
-API 类型: OpenAI 兼容 API
+协议: OpenAI 兼容
 模型: llama3.2
-API Key: ollama (任意值)
+API Key: ollama
 Base URL: http://localhost:11434/v1
 ```
 
 #### 智谱 AI
 
 ```
-API 类型: OpenAI 兼容 API
+协议: OpenAI 兼容
 模型: glm-4
 API Key: xxxxx.xxxxx
 Base URL: https://open.bigmodel.cn/api/paas/v4
@@ -87,7 +86,7 @@ Base URL: https://open.bigmodel.cn/api/paas/v4
 #### Moonshot
 
 ```
-API 类型: OpenAI 兼容 API
+协议: OpenAI 兼容
 模型: moonshot-v1-8k
 API Key: sk-xxxxx
 Base URL: https://api.moonshot.cn/v1
@@ -97,38 +96,64 @@ Base URL: https://api.moonshot.cn/v1
 
 ### 多轮对话
 
-现在应用支持多轮对话，AI 会记住之前的对话内容：
+Agent SDK 自动管理对话上下文：
 
 1. 正常输入消息并发送
 2. AI 会根据上下文理解你的问题
-3. 对话历史会自动保存（最多 50 条）
+3. 对话由 SDK 持久化，切换会话可恢复
 
-### 清除对话
+### 会话管理
 
-点击输入框左侧的"清除"按钮，可以清空当前对话历史，开始新的对话。
+- **新建对话**：点击侧边栏"+ 新对话"
+- **切换对话**：点击侧边栏中的会话项
+- **重命名**：点击会话项的重命名按钮
+- **删除**：点击会话项的删除按钮
+
+### 斜杠命令
+
+| 命令 | 功能 |
+|------|------|
+| `/help` | 显示帮助信息 |
+| `/clear` | 清除当前对话 |
+| `/compact` | 压缩对话历史 |
+| `/config` | 打开设置 |
+| `/model` | 切换模型 |
+
+### @ 文件引用
+
+输入 `@` 后跟文件路径可以引用本地文件，支持路径自动补全。
+
+### 图片附件
+
+- 直接粘贴图片
+- 拖拽图片到输入框
+- 最多 6 张，单张不超过 8MB
 
 ### 取消响应
 
-在 AI 响应过程中，点击"取消"按钮可以中断当前响应。
+在 AI 响应过程中，点击停止按钮或按 Esc 可以中断当前响应。
 
-### 测试连接
+### 恢复操作
 
-配置完 API 后，点击"测试连接"按钮验证配置是否正确。
+按两次 Esc 打开恢复菜单，可以撤销最后一轮或清除对话。
 
 ## 构建命令
 
 ```bash
-# 开发运行
-npm start
-
 # 开发模式（热重载）
 npm run dev
+
+# 编译并运行
+npm start
 
 # 代码检查
 npm run lint
 
 # 格式化代码
 npm run format
+
+# 运行测试
+npm run test:chat-stream
 
 # 打包（当前平台）
 npm run dist
@@ -142,43 +167,23 @@ npm run dist:win
 
 ## 常见问题
 
-### Settings 按钮无法点击
-
-**原因**：preload 脚本加载失败
+### 启动后黑屏
 
 **解决方案**：
-1. 确保 `dist/preload.js` 文件存在
-2. 运行 `npm run build` 重新编译
+1. 运行 `npm run build` 重新编译
+2. 确认 `dist/preload.js` 和 `dist/renderer/` 存在
+3. 详见 [启动黑屏排查指南](./startup-black-screen-troubleshooting-2026-02-21.md)
 
-### 连接测试超时
+### 连接测试失败
 
 **可能原因**：
 1. 网络连接问题
 2. API 地址不正确
-3. 选择了错误的 API 类型
+3. OpenAI 兼容提供商未填写 Base URL
 
-**解决方案**：
-1. 检查网络连接
-2. 确认 API 地址正确
-3. Anthropic 模型选择 "Anthropic API"，其他选择 "OpenAI 兼容 API"
+### API Key 无法加密
 
-### API Key 无法保存
-
-**原因**：系统不支持安全存储
-
-**说明**：在某些 Linux 系统上，如果没有安装 Keyring，会自动降级为明文存储。这不影响功能使用，但安全性较低。
-
-### AI 不记得之前的对话
-
-**原因**：可能是旧版本
-
-**解决方案**：
-1. 更新到 v1.2.0 或更高版本
-2. 运行 `npm run build` 重新编译
-
-### 对话历史丢失
-
-**说明**：当前版本的对话历史存储在内存中，应用重启后会丢失。这是预期行为，未来版本会添加持久化功能。
+在某些 Linux 系统上（无 Keyring），会自动降级为明文存储。功能不受影响，但安全性较低。
 
 ## 键盘快捷键
 
@@ -186,19 +191,13 @@ npm run dist:win
 |--------|------|
 | `Enter` | 发送消息 |
 | `Shift + Enter` | 换行 |
+| `Esc` | 取消流式响应 |
+| `Esc + Esc` | 打开恢复菜单 |
+| `/` | 触发斜杠命令 |
+| `@` | 触发文件路径补全 |
 
 ## 系统要求
 
-- **macOS**: 10.13 或更高
-- **Windows**: Windows 10 或更高
+- **macOS**: 10.13+（Intel 或 Apple Silicon）
+- **Windows**: Windows 10+
 - **Linux**: 支持大多数发行版
-
-## 获取帮助
-
-如果遇到问题，请检查：
-
-1. 是否使用了最新版本
-2. API 配置是否正确
-3. 网络连接是否正常
-
-如果问题仍然存在，请提交 Issue。

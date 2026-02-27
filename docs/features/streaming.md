@@ -1,146 +1,139 @@
 # 流式响应
 
-> v1.1.0 基础功能，v1.3.1 性能优化
+> Agent SDK 迁移后的架构 — SDK query() 驱动流式消息
 
 ## 功能概述
 
-流式响应功能实现 AI 回复的实时显示，用户可以看到 AI 逐字生成内容，而不是等待完整响应。这提供了更好的用户体验和更快的感知响应时间。
+流式响应功能实现 AI 回复的实时显示。Agent SDK 的 `query()` 返回 `AsyncIterable<SDKMessage>`，`AgentService` 将 SDK 消息映射为应用内部的 `StreamChunk`，通过 IPC 发送到渲染层进行实时渲染。
 
-## 实现原理
-
-### 数据流架构
+## 数据流架构
 
 ```
-AI API (Anthropic/OpenAI)
-    ↓ SSE 流式响应
-ClaudeService (AsyncGenerator)
-    ↓ yield chunk
-Main Process (IPC)
-    ↓ webContents.send()
-Renderer Process
-    ↓ 实时显示
-UI 更新
+Claude Agent SDK
+    ↓ AsyncIterable<SDKMessage>
+AgentService.mapSdkMessageToChunks()
+    ↓ StreamChunk[]
+Main Process (chat-handlers)
+    ↓ webContents.send('stream-chunk', chunk)
+Preload (ipcRenderer.on)
+    ↓
+chat-stream-listener.handleChunk()
+    ↓ 缓冲 + 调度
+chat-stream-state (pure reducers)
+    ↓
+chat-store (streamItems 更新)
+    ↓
+ChatArea UI 重渲染
 ```
 
-### 核心实现
+## 核心实现
 
-#### 1. AI 服务层 (claude-service.ts)
+### 1. AgentService（消息映射）
 
-使用 AsyncGenerator 实现流式输出：
+SDK 消息类型到 StreamChunk 的映射：
+
+| SDK 消息类型 | 处理方法 | 产生的 StreamChunk |
+|-------------|---------|-------------------|
+| `system` (init) | `handleSystemMessage` | 无（设置 sessionId） |
+| `assistant` | `handleAssistantMessage` | text, tool_use, thinking |
+| `stream_event` | `handleStreamEvent` | text, tool_use, tool_input_delta, thinking |
+| `result` (success) | `handleResultMessage` | done |
+| `result` (error) | `handleResultMessage` | error |
+| `user` (tool_result) | `handleUserMessage` | tool_result |
+| `tool_progress` | `handleToolProgress` | tool_start |
+
+### 2. 主进程（IPC 转发）
 
 ```typescript
-async *sendMessageStream(message: string): AsyncGenerator<StreamChunk> {
-  // Anthropic API
-  const stream = client.messages.stream({ ... });
-  
-  for await (const event of stream) {
-    if (event.type === 'content_block_delta') {
-      yield { type: 'text', content: event.delta.text };
-    }
-  }
+// chat-handlers.ts
+const stream = service.sendMessageStream(prompt, options);
+for await (const chunk of stream) {
+  sendStreamChunk(context, chunk);
 }
 ```
 
-#### 2. 主进程 (main.ts)
+### 3. 渲染层管线
 
-通过 IPC 发送流式数据：
+#### chat-stream-listener
 
-```typescript
-ipcMain.handle('send-message-stream', async (_, message) => {
-  const stream = claudeService.sendMessageStream(message);
-  
-  for await (const chunk of stream) {
-    mainWindow.webContents.send('stream-chunk', chunk);
-  }
-  
-  mainWindow.webContents.send('stream-chunk', { type: 'done' });
-});
-```
+- 接收 IPC stream-chunk 事件
+- 文本 chunk 缓冲，定时刷新（减少渲染次数）
+- 工具事件立即处理
+- `done` 信号触发 `onDone` 回调
 
-#### 3. 渲染进程 (renderer.ts)
+#### chat-stream-state（纯 reducer）
 
-v1.3.1 优化后的流式显示：
+无副作用的状态转换函数：
 
 ```typescript
-private streamingContent = '';
-
-private handleStreamChunk(chunk: StreamChunk): void {
-  if (chunk.type === 'done') {
-    // 完成时格式化完整内容
-    this.currentAssistantMessage.innerHTML = this.formatContent(this.streamingContent);
-    this.streamingContent = '';
-    return;
-  }
-
-  if (chunk.type === 'text') {
-    // 流式过程中使用 textContent 快速更新
-    this.streamingContent += chunk.content;
-    this.currentAssistantMessage.textContent = this.streamingContent;
-  }
-}
+applyTextChunk(items, chunk)        → 追加文本到最后一个文本项
+applyToolUseChunk(items, chunk)     → 添加或更新工具调用项
+applyToolStartChunk(items, chunk)   → 标记工具开始执行
+applyToolInputDeltaChunk(items, chunk) → 更新工具输入流式内容
+applyToolResultChunk(items, chunk)  → 设置工具执行结果
 ```
 
-## v1.3.1 性能优化
+#### chat-store
 
-### 问题
-
-之前的实现在每个 chunk 到来时都调用 `formatContent()` 并设置 `innerHTML`，导致：
-- 每次都重新解析 HTML，性能低下
-- 不完整的 Markdown 语法被错误格式化
-- 显示出现卡顿
-
-### 解决方案
-
-1. **流式过程**：使用 `textContent` 直接显示纯文本（更快）
-2. **累积内容**：将所有 chunk 累积到 `streamingContent` 变量
-3. **完成格式化**：只在流结束时（`done` 信号）调用 `formatContent()` 格式化完整内容
-
-### 效果对比
-
-| 指标 | 优化前 | 优化后 |
-|------|--------|--------|
-| 每 chunk 操作 | innerHTML + formatContent | textContent |
-| HTML 解析 | 每 chunk 一次 | 仅完成时一次 |
-| Markdown 格式化 | 部分内容（可能出错） | 完整内容 |
-| 用户感知 | 可能卡顿 | 流畅 |
+- `streamItems`: 当前流式消息的 MessageItem 列表
+- `isLoading` / `isWaitingResponse`: 加载状态
+- `pendingApprovalId`: 等待审批的工具 ID
+- `onDone`: 流结束后将 streamItems 合并为助手消息
 
 ## StreamChunk 类型
 
 ```typescript
-type ChunkType = 'text' | 'thinking' | 'error' | 'done';
+type ChunkType =
+  | 'text'             // 文本内容
+  | 'thinking'         // AI 思考过程
+  | 'error'            // 错误信息
+  | 'done'             // 流结束信号
+  | 'tool_use'         // 工具调用（开始/完成）
+  | 'tool_start'       // 工具开始执行
+  | 'tool_input_delta' // 工具输入参数流式片段
+  | 'tool_result'      // 工具执行结果
+  | 'processing';      // 处理中
 
 interface StreamChunk {
   type: ChunkType;
   content: string;
+  toolUse?: ToolUseInfo;
+  toolUseComplete?: boolean;
+  toolInputDelta?: ToolInputDeltaInfo;
 }
 ```
 
-| 类型 | 说明 |
-|------|------|
-| `text` | 正常文本内容 |
-| `thinking` | AI 思考过程（预留） |
-| `error` | 错误信息 |
-| `done` | 流结束信号 |
+## 流式去重机制
+
+SDK 的 `stream_event` 和后续的完整 `assistant` 消息可能包含相同的工具调用。`AgentService` 通过以下机制去重：
+
+- `streamedToolIds: Set<string>` — 记录已通过流式事件发出的工具 ID
+- `contentBlockToolMap: Map<number, { id, name }>` — 映射 content block index 到工具信息
+- `handleAssistantMessage` 检查 `streamedToolIds` 避免重复发出 tool_use
+
+每次 `handleAssistantMessage` 结束后调用 `resetStreamingState()` 清空状态。
 
 ## 取消流式响应
 
-用户可以随时取消正在进行的流式响应：
-
 ```typescript
-// 服务端
+// AgentService
 abort(): void {
-  if (this.abortController) {
-    this.abortController.abort();
+  if (this.activeQuery) {
+    this.activeQuery.close();
+    this.activeQuery = null;
   }
 }
 
-// 客户端
-await window.electronAPI.abortStream();
+// 渲染层
+await electronApiClient.abortStream();
 ```
 
-取消后，当前轮次的用户消息会从历史中移除，避免上下文污染。
+## 核心代码
 
-## 相关功能
-
-- [对话记忆](./conversation-memory.md) - 消息历史管理
-- [历史会话](./session-history.md) - 会话持久化
+| 文件 | 职责 |
+|------|------|
+| `src/agent-service.ts` | SDK 消息映射、流式去重 |
+| `src/main-process/ipc/chat-handlers.ts` | IPC 流转发 |
+| `src/renderer/stores/chat-stream-listener.ts` | chunk 缓冲消费 |
+| `src/renderer/stores/chat-stream-state.ts` | 纯 reducer 状态转换 |
+| `src/renderer/stores/chat-store.ts` | 流式状态管理 |

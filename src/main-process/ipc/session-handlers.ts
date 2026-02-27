@@ -110,7 +110,7 @@ export function registerSessionHandlers(context: MainProcessContext): void {
     const sdkSessions = await service.listSessions();
 
     return sdkSessions
-      .filter((s) => !storage.isSessionDeleted(s.sessionId))
+      .filter((s) => storage.isKnownSession(s.sessionId) && !storage.isSessionDeleted(s.sessionId))
       .map((s) => {
         const title = storage.getSessionTitle(s.sessionId) || s.customTitle || s.summary || '新对话';
         const preview = s.firstPrompt

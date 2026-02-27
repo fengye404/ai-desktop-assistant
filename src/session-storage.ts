@@ -13,8 +13,6 @@ import * as path from 'path';
 import Database from 'better-sqlite3';
 import type {
   ModelConfig,
-  ModelServiceInstance,
-  ModelServicesConfig,
   ModelProvider,
   ModelProvidersConfig,
   McpServersConfig,
@@ -115,6 +113,29 @@ export class SessionStorage {
   }
 
   // ==================== Session Metadata ====================
+
+  /**
+   * Register a session ID as belonging to this app.
+   * Called when the SDK `init` system message provides a session_id.
+   */
+  registerSession(sdkSessionId: string): void {
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT INTO session_metadata (sdk_session_id, created_at, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(sdk_session_id) DO NOTHING
+    `).run(sdkSessionId, now, now);
+  }
+
+  /**
+   * Check if a session was created by this app (exists in our metadata table).
+   */
+  isKnownSession(sdkSessionId: string): boolean {
+    const row = this.db
+      .prepare('SELECT 1 FROM session_metadata WHERE sdk_session_id = ?')
+      .get(sdkSessionId);
+    return row !== undefined;
+  }
 
   getSessionTitle(sdkSessionId: string): string | null {
     const row = this.db
@@ -316,43 +337,6 @@ export class SessionStorage {
       model: current.activeModelId || activeProvider.models[0] || getDefaultModel(activeProvider.protocol),
       baseURL: activeProvider.baseURL,
       apiKey: activeProvider.apiKey,
-    };
-  }
-
-  // ==================== Legacy compatibility ====================
-
-  saveModelServicesConfig(config: ModelServicesConfig): void {
-    const providers: ModelProvider[] = config.instances.map((inst) => ({
-      id: inst.id,
-      name: inst.name,
-      description: '',
-      protocol: normalizeProvider(inst.provider),
-      baseURL: inst.baseURL,
-      apiKey: inst.apiKey,
-      models: [inst.model],
-    }));
-
-    this.saveModelProvidersConfig({
-      activeProviderId: config.activeInstanceId,
-      activeModelId: config.instances.find((i) => i.id === config.activeInstanceId)?.model ?? null,
-      providers,
-    });
-  }
-
-  loadModelServicesConfig(): ModelServicesConfig {
-    const config = this.loadModelProvidersConfig();
-    const instances: ModelServiceInstance[] = config.providers.map((p) => ({
-      id: p.id,
-      name: p.name,
-      provider: p.protocol,
-      model: p.models[0] || getDefaultModel(p.protocol),
-      apiKey: p.apiKey,
-      baseURL: p.baseURL,
-    }));
-
-    return {
-      activeInstanceId: config.activeProviderId,
-      instances,
     };
   }
 

@@ -4,7 +4,7 @@
 
 ## 产品定位
 
-AI Desktop Assistant 定位为类似 **Anthropic AI Cowork** 的桌面 AI 协作工具，提供流畅的多轮对话体验、本地文件集成和可扩展的工具系统。
+AI Desktop Assistant 定位为类似 **Anthropic Cowork** 的桌面 AI 协作工具，核心架构围绕 Claude Agent SDK 构建，提供流畅的多轮对话体验、本地文件集成和可扩展的工具系统。通过协议翻译层，同时支持 OpenAI 兼容的第三方模型提供商。
 
 ## 文档目录
 
@@ -19,7 +19,8 @@ AI Desktop Assistant 定位为类似 **Anthropic AI Cowork** 的桌面 AI 协作
 
 | 模块 | 说明 |
 |------|------|
-| [架构设计](./architecture/README.md) | 进程模型、模块职责、数据流 |
+| [系统架构](./architecture/system-architecture.md) | 完整系统架构（进程模型、数据流、服务详解） |
+| [架构设计](./architecture/README.md) | 架构优化记录 |
 | [功能特性](./features/README.md) | 各功能模块的详细说明 |
 | [API 参考](./api/README.md) | IPC 通信接口、类型定义 |
 | [使用指南](./guides/README.md) | 配置说明、常见问题 |
@@ -28,19 +29,21 @@ AI Desktop Assistant 定位为类似 **Anthropic AI Cowork** 的桌面 AI 协作
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
-| v1.6.9 | 2026-02-21 | UI 视觉修复：移除顶部 bridge 警告横幅、优化会话列表与滚动条、重做工具自动执行配置样式 |
-| v1.6.8 | 2026-02-21 | 启动韧性重构：新增渲染错误边界、主进程挂载健康探针、加载失败诊断页，黑屏可恢复可定位 |
-| v1.6.7 | 2026-02-21 | 渲染层黑屏兜底：Electron bridge 缺失时安全降级，初始化监听器增加异常防护 |
-| v1.6.6 | 2026-02-21 | Claude Provider Adapter 接口化：provider 分发由条件分支升级为注册表模式 |
-| v1.6.5 | 2026-02-21 | Chat Stream Listener runtime 重构：抽离缓冲/队列流程并补齐 11 条回放单测 |
-| v1.6.4 | 2026-02-21 | 增加 Chat Stream State 回放单测：Node 内置测试 + 独立编译配置 + 可执行脚本 |
-| v1.6.3 | 2026-02-21 | Chat Store 流式状态重构：提炼纯 reducer 模块，store 聚焦流程编排 |
-| v1.6.2 | 2026-02-21 | Claude Service 服务层重构：provider 流式模块拆分、常量模块化、编排层收敛 |
-| v1.6.1 | 2026-02-21 | 系统架构分析与优化：IPC 分域模块化、安全处理提纯、文档补全 |
-| v1.6.0 | 2026-02-21 | 前端与客户端架构重构：主进程分层、IPC 契约统一、store-service 解耦 |
-| v1.5.1 | 2026-02-21 | 页面展示与性能优化：首屏瘦身、懒加载高亮、可访问性增强 |
-| v1.5.0 | 2026-02-21 | 工具调用 UI 展示、权限设置、会话级确认、gzip 持久化 |
-| v1.4.0 | 2026-02-21 | 工具系统：实现 Agentic Loop、9 个内置工具、权限控制 |
+| v2.0.0 | 2026-02-28 | 架构清理：移除废弃代码、统一文档、修复架构不一致 |
+| v1.7.0 | 2026-02-26 | Agent SDK 迁移：AgentService 替换 ClaudeService，协议翻译层 |
+| v1.6.9 | 2026-02-21 | UI 视觉修复：移除顶部 bridge 警告横幅、优化会话列表与滚动条 |
+| v1.6.8 | 2026-02-21 | 启动韧性重构：渲染错误边界、挂载健康探针、加载失败诊断页 |
+| v1.6.7 | 2026-02-21 | 渲染层黑屏兜底：Electron bridge 缺失时安全降级 |
+| v1.6.6 | 2026-02-21 | Claude Provider Adapter 接口化 |
+| v1.6.5 | 2026-02-21 | Chat Stream Listener runtime 重构 |
+| v1.6.4 | 2026-02-21 | Chat Stream State 回放单测 |
+| v1.6.3 | 2026-02-21 | Chat Store 流式状态重构 |
+| v1.6.2 | 2026-02-21 | Claude Service 服务层重构 |
+| v1.6.1 | 2026-02-21 | 系统架构分析与优化 |
+| v1.6.0 | 2026-02-21 | 前端与客户端架构重构 |
+| v1.5.1 | 2026-02-21 | 页面展示与性能优化 |
+| v1.5.0 | 2026-02-21 | 工具调用 UI 展示、权限设置、gzip 持久化 |
+| v1.4.0 | 2026-02-21 | 工具系统：Agentic Loop、内置工具、权限控制 |
 | v1.3.2 | 2026-02-20 | 前端重构为 Vite + React + Tailwind + shadcn/ui + Zustand |
 | v1.3.1 | 2026-02-20 | 修复流式输出、配置持久化到 SQLite |
 | v1.3.0 | 2026-02-20 | 添加历史会话记录，SQLite 持久化存储 |
@@ -65,48 +68,35 @@ npm run dev
 ```
 ai-desktop-assistant/
 ├── src/
-│   ├── main.ts              # Electron 主进程入口
-│   ├── preload.ts           # 预加载脚本 (IPC 桥接)
-│   ├── renderer.ts          # 渲染进程桥接
-│   ├── claude-service.ts    # AI 服务层 (多提供商支持)
-│   ├── session-storage.ts   # 会话存储服务 (SQLite)
-│   ├── tool-executor.ts     # 工具执行器 (9 个内置工具)
+│   ├── main.ts                 # Electron 主进程入口
+│   ├── preload.ts              # 预加载脚本 (IPC 桥接)
+│   ├── agent-service.ts        # AI 核心服务 (Claude Agent SDK)
+│   ├── session-storage.ts      # SQLite 配置与会话元数据存储
 │   ├── types/
-│   │   └── index.ts         # 集中类型定义
+│   │   └── index.ts            # 集中类型定义
 │   ├── utils/
-│   │   └── errors.ts        # 自定义错误类
-│   ├── ai/                  # AI 提供商适配器
-│   │   ├── providers/       # Anthropic/OpenAI 流式适配器
-│   │   └── provider-streams.ts
-│   ├── main-process/        # 主进程模块化拆分
-│   │   ├── ipc/             # IPC 处理器分域
-│   │   ├── mcp/             # MCP 协议实现
-│   │   └── chat-input/      # 聊天输入处理
-│   └── renderer/            # React 前端应用
-│       ├── main.tsx         # React 入口
-│       ├── App.tsx          # 根组件
-│       ├── components/      # UI 组件
-│       │   ├── ui/          # shadcn/ui 基础组件
-│       │   ├── Sidebar.tsx
-│       │   ├── ChatArea.tsx
-│       │   ├── SettingsDialog.tsx
-│       │   ├── ToolCallBlock.tsx
-│       │   └── MarkdownRenderer.tsx
-│       ├── stores/          # Zustand 状态管理
-│       │   ├── config-store.ts
-│       │   ├── session-store.ts
-│       │   └── chat-store.ts
-│       ├── services/        # API 客户端封装
-│       │   └── electron-api-client.ts
-│       ├── lib/
-│       │   └── utils.ts     # 工具函数
-│       └── styles/
-│           └── globals.css  # 全局样式
-├── docs/                    # 项目文档
-├── dist/                    # 编译输出
-│   ├── *.js                 # 主进程编译结果
-│   └── renderer/            # Vite 构建的前端
-└── release/                 # 打包输出
+│   │   └── errors.ts           # 自定义错误类
+│   ├── shared/
+│   │   └── branding.ts         # 产品名称、图标
+│   ├── ai/
+│   │   └── protocol-translator/  # Anthropic ↔ OpenAI 协议翻译
+│   ├── main-process/           # 主进程模块化拆分
+│   │   ├── main-process-context.ts
+│   │   ├── ipc/                # IPC 处理器分域
+│   │   ├── mcp/                # MCP 配置管理
+│   │   └── chat-input/         # @引用解析、路径补全
+│   └── renderer/               # React 前端应用
+│       ├── main.tsx            # React 入口
+│       ├── App.tsx             # 根组件
+│       ├── components/         # UI 组件
+│       ├── stores/             # Zustand 状态管理
+│       ├── services/           # API 客户端封装
+│       ├── lib/                # 工具函数
+│       └── styles/             # 全局样式
+├── docs/                       # 项目文档
+├── scripts/                    # 构建脚本
+├── dist/                       # 编译输出
+└── release/                    # 打包输出
 ```
 
 ## 技术栈
@@ -116,10 +106,10 @@ ai-desktop-assistant/
 | 运行时 | Electron 28 |
 | 语言 | TypeScript 5.3 |
 | 前端框架 | React 19 |
-| 构建工具 | Vite 7 |
+| 构建工具 | Vite 7 (渲染层) + esbuild (主进程) |
 | CSS 框架 | Tailwind CSS v4 |
 | UI 组件 | shadcn/ui (Radix UI) |
 | 状态管理 | Zustand |
-| AI SDK | @anthropic-ai/sdk, openai |
+| AI 核心 | @anthropic-ai/claude-agent-sdk |
 | 数据库 | SQLite (better-sqlite3) |
 | 打包工具 | electron-builder |

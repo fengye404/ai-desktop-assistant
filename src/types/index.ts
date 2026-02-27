@@ -102,7 +102,7 @@ export type ChunkType =
   | 'processing';
 
 /**
- * Model configuration for AI providers (internal, used by ClaudeService)
+ * Model configuration for AI providers (internal, used by AgentService)
  */
 export interface ModelConfig {
   provider: Provider;
@@ -110,27 +110,6 @@ export interface ModelConfig {
   baseURL?: string;
   model: string;
   maxTokens?: number;
-}
-
-/**
- * Persistent model service instance (API key is encrypted when saved to disk)
- * @deprecated Use ModelProvider + ModelProvidersConfig instead
- */
-export interface ModelServiceInstance {
-  id: string;
-  name: string;
-  provider: Provider;
-  model: string;
-  apiKey: string;
-  baseURL?: string;
-}
-
-/**
- * @deprecated Use ModelProvidersConfig instead
- */
-export interface ModelServicesConfig {
-  activeInstanceId: string | null;
-  instances: ModelServiceInstance[];
 }
 
 /**
@@ -412,25 +391,6 @@ export interface ElectronAPI {
   onToolApprovalRequest: (callback: (request: ToolApprovalRequest) => void) => void;
   respondToolApproval: (response: ToolApprovalResponse) => void;
 }
-
-/**
- * Preset configuration
- */
-export interface PresetConfig {
-  provider: Provider;
-  model: string;
-  baseURL?: string;
-}
-
-/**
- * Available presets
- */
-export type PresetName = 'anthropic' | 'openai' | 'ollama' | 'deepseek' | 'moonshot' | 'custom';
-
-/**
- * Map of preset names to configurations
- */
-export type PresetsMap = Record<PresetName, Partial<PresetConfig>>;
 
 /**
  * Augment Window interface with electronAPI
