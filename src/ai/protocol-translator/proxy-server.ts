@@ -110,14 +110,7 @@ async function handleRequest(
 
   let fetchRes: Response;
   try {
-    fetchRes = await fetch(targetURL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${options.targetApiKey}`,
-      },
-      body: JSON.stringify(openAIReq),
-    });
+    fetchRes = await forwardOpenAIRequest(targetURL, options.targetApiKey, openAIReq);
   } catch (err) {
     console.error('[protocol-translator] Fetch failed:', err);
     res.writeHead(502, { 'Content-Type': 'application/json' });
@@ -136,15 +129,43 @@ async function handleRequest(
   console.log(`[protocol-translator] Provider responded: ${fetchRes.status}`);
 
   if (!fetchRes.ok) {
-    const errorBody = await fetchRes.text();
-    console.error(`[protocol-translator] Provider error ${fetchRes.status}:`, errorBody);
+    const initialErrorBody = await fetchRes.text();
+    if (
+      isStream
+      && openAIReq.stream_options?.include_usage
+      && looksLikeUnsupportedStreamOptions(fetchRes.status, initialErrorBody)
+    ) {
+      console.warn('[protocol-translator] Provider does not support stream_options.include_usage, retrying without it');
+      const fallbackReq = { ...openAIReq };
+      delete fallbackReq.stream_options;
+      fetchRes = await forwardOpenAIRequest(targetURL, options.targetApiKey, fallbackReq);
+      console.log(`[protocol-translator] Fallback provider response: ${fetchRes.status}`);
+    } else {
+      console.error(`[protocol-translator] Provider error ${fetchRes.status}:`, initialErrorBody);
+      res.writeHead(fetchRes.status, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          type: 'error',
+          error: {
+            type: 'api_error',
+            message: `Provider returned ${fetchRes.status}: ${initialErrorBody}`,
+          },
+        }),
+      );
+      return;
+    }
+  }
+
+  if (!fetchRes.ok) {
+    const fallbackErrorBody = await fetchRes.text();
+    console.error(`[protocol-translator] Provider error ${fetchRes.status}:`, fallbackErrorBody);
     res.writeHead(fetchRes.status, { 'Content-Type': 'application/json' });
     res.end(
       JSON.stringify({
         type: 'error',
         error: {
           type: 'api_error',
-          message: `Provider returned ${fetchRes.status}: ${errorBody}`,
+          message: `Provider returned ${fetchRes.status}: ${fallbackErrorBody}`,
         },
       }),
     );
@@ -307,4 +328,30 @@ function normalizeBaseURL(url: string): string {
     normalized += '/v1';
   }
   return normalized;
+}
+
+async function forwardOpenAIRequest(
+  targetURL: string,
+  targetApiKey: string,
+  payload: unknown,
+): Promise<Response> {
+  return fetch(targetURL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${targetApiKey}`,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+function looksLikeUnsupportedStreamOptions(status: number, body: string): boolean {
+  if (status !== 400 && status !== 422) return false;
+  const lowered = body.toLowerCase();
+  return (
+    lowered.includes('stream_options')
+    || lowered.includes('include_usage')
+    || (lowered.includes('unknown') && lowered.includes('stream'))
+    || (lowered.includes('unsupported') && lowered.includes('stream'))
+  );
 }

@@ -30,6 +30,7 @@ export class OpenAIToAnthropicStreamTransformer {
   private currentTextBlockOpen = false;
   private toolCallBlocks = new Map<number, { id: string; name: string; index: number }>();
   private messageStarted = false;
+  private inputTokens = 0;
   private outputTokens = 0;
   private model: string;
   private messageId: string;
@@ -45,6 +46,7 @@ export class OpenAIToAnthropicStreamTransformer {
    */
   transformChunk(chunk: OpenAIStreamChunk): string[] {
     const events: string[] = [];
+    this.updateUsageFromChunk(chunk);
 
     if (!this.messageStarted) {
       events.push(this.emitMessageStart(chunk));
@@ -53,9 +55,6 @@ export class OpenAIToAnthropicStreamTransformer {
 
     const choice = chunk.choices?.[0];
     if (!choice) {
-      if (chunk.usage) {
-        this.outputTokens = chunk.usage.completion_tokens;
-      }
       return events;
     }
 
@@ -107,10 +106,6 @@ export class OpenAIToAnthropicStreamTransformer {
       }
       this.toolCallBlocks.clear();
 
-      if (chunk.usage) {
-        this.outputTokens = chunk.usage.completion_tokens;
-      }
-
       events.push(this.emitMessageDelta(choice.finish_reason));
       events.push(sseEvent('message_stop', { type: 'message_stop' }));
     }
@@ -134,7 +129,7 @@ export class OpenAIToAnthropicStreamTransformer {
         stop_reason: null,
         stop_sequence: null,
         usage: {
-          input_tokens: chunk.usage?.prompt_tokens ?? 0,
+          input_tokens: this.inputTokens,
           output_tokens: 0,
         },
       },
@@ -188,8 +183,29 @@ export class OpenAIToAnthropicStreamTransformer {
     return sseEvent('message_delta', {
       type: 'message_delta',
       delta: { stop_reason: openAIFinishReasonToAnthropic(finishReason) },
-      usage: { output_tokens: this.outputTokens },
+      usage: {
+        input_tokens: this.inputTokens,
+        output_tokens: this.outputTokens,
+      },
     });
+  }
+
+  private updateUsageFromChunk(chunk: OpenAIStreamChunk): void {
+    const usage = chunk.usage;
+    if (!usage) return;
+
+    const promptTokens = readNumber(usage, 'prompt_tokens', 'input_tokens');
+    const completionTokens = readNumber(usage, 'completion_tokens', 'output_tokens');
+    const totalTokens = readNumber(usage, 'total_tokens');
+
+    if (typeof promptTokens === 'number') {
+      this.inputTokens = promptTokens;
+    }
+    if (typeof completionTokens === 'number') {
+      this.outputTokens = completionTokens;
+    } else if (typeof totalTokens === 'number' && this.inputTokens > 0 && totalTokens >= this.inputTokens) {
+      this.outputTokens = totalTokens - this.inputTokens;
+    }
   }
 }
 
@@ -199,6 +215,16 @@ export class OpenAIToAnthropicStreamTransformer {
 
 function sseEvent(eventType: string, data: unknown): string {
   return `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+function readNumber(record: Record<string, unknown>, ...keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return undefined;
 }
 
 /**

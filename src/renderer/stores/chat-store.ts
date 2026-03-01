@@ -7,6 +7,7 @@ import type {
   ChatImageAttachment,
   MessageItem,
   RewindHistoryResult,
+  StreamUsageInfo,
   ToolCallRecord,
 } from '../../types';
 import { createChatStreamListener, type ChatStreamListener } from './chat-stream-listener';
@@ -21,11 +22,44 @@ import {
 export type ToolCall = ToolCallRecord;
 export type StreamItem = MessageItem;
 
+export interface RuntimeUsageStats {
+  totalInputTokens: number | null;
+  totalOutputTokens: number | null;
+  contextWindowTokens: number | null;
+  contextRemainingTokens: number | null;
+  contextRemainingPercent: number | null;
+}
+
+const EMPTY_USAGE_STATS: RuntimeUsageStats = {
+  totalInputTokens: null,
+  totalOutputTokens: null,
+  contextWindowTokens: null,
+  contextRemainingTokens: null,
+  contextRemainingPercent: null,
+};
+
+function mergeUsageStats(current: RuntimeUsageStats, usage: StreamUsageInfo): RuntimeUsageStats {
+  const turnInputTokens = typeof usage.inputTokens === 'number' ? Math.max(0, usage.inputTokens) : null;
+  const turnOutputTokens = typeof usage.outputTokens === 'number' ? Math.max(0, usage.outputTokens) : null;
+  return {
+    totalInputTokens: turnInputTokens === null
+      ? current.totalInputTokens
+      : (current.totalInputTokens ?? 0) + turnInputTokens,
+    totalOutputTokens: turnOutputTokens === null
+      ? current.totalOutputTokens
+      : (current.totalOutputTokens ?? 0) + turnOutputTokens,
+    contextWindowTokens: typeof usage.contextWindowTokens === 'number' ? usage.contextWindowTokens : current.contextWindowTokens,
+    contextRemainingTokens: typeof usage.contextRemainingTokens === 'number' ? usage.contextRemainingTokens : current.contextRemainingTokens,
+    contextRemainingPercent: typeof usage.contextRemainingPercent === 'number' ? usage.contextRemainingPercent : current.contextRemainingPercent,
+  };
+}
+
 interface ChatState {
   isLoading: boolean;
   streamItems: StreamItem[];
   pendingApprovalId: string | null;
   isWaitingResponse: boolean;
+  usageStats: RuntimeUsageStats;
 
   sendMessage: (message: string, attachments?: ChatImageAttachment[]) => Promise<void>;
   cancelStream: () => Promise<void>;
@@ -35,6 +69,7 @@ interface ChatState {
   rejectToolCall: (id: string) => void;
   initStreamListener: () => void;
   resetStreamState: () => void;
+  resetUsageStats: () => void;
 }
 
 type StreamStateSlice = Pick<ChatState, 'streamItems' | 'pendingApprovalId' | 'isWaitingResponse'>;
@@ -176,6 +211,7 @@ export const useChatStore = create<ChatState>((set, get) => {
   return {
     isLoading: false,
     ...createEmptyStreamState(),
+    usageStats: { ...EMPTY_USAGE_STATS },
 
     sendMessage: async (message: string, attachments?: ChatImageAttachment[]) => {
       const trimmedMessage = message.trim();
@@ -215,7 +251,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       await electronApiClient.clearHistory();
       useSessionStore.getState().setCurrentMessages([]);
       streamListener?.dispose();
-      set(createEmptyStreamState());
+      set({ ...createEmptyStreamState(), usageStats: { ...EMPTY_USAGE_STATS } });
       await useSessionStore.getState().refreshSessions();
     },
 
@@ -246,6 +282,10 @@ export const useChatStore = create<ChatState>((set, get) => {
     resetStreamState: () => {
       streamListener?.dispose();
       set({ isLoading: false, ...createEmptyStreamState() });
+    },
+
+    resetUsageStats: () => {
+      set({ usageStats: { ...EMPTY_USAGE_STATS } });
     },
 
     initStreamListener: () => {
@@ -287,7 +327,12 @@ export const useChatStore = create<ChatState>((set, get) => {
         respondToolApproval: (response) => electronApiClient.respondToolApproval(response),
       });
 
-      electronApiClient.onStreamChunk(streamListener.handleChunk);
+      electronApiClient.onStreamChunk((chunk) => {
+        if (chunk.usage) {
+          set((state) => ({ usageStats: mergeUsageStats(state.usageStats, chunk.usage) }));
+        }
+        streamListener?.handleChunk(chunk);
+      });
       electronApiClient.onToolApprovalRequest(streamListener.handleToolApprovalRequest);
     },
   };

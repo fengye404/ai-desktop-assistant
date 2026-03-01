@@ -7,6 +7,7 @@ export type ChunkType =
   | 'thinking'
   | 'error'
   | 'done'
+  | 'usage'
   | 'tool_use'
   | 'tool_start'
   | 'tool_input_delta'
@@ -36,9 +37,19 @@ export interface ChatMessage {
 export interface StreamChunk {
   type: ChunkType;
   content: string;
+  usage?: StreamUsageInfo;
   toolUse?: ToolUseInfo;
   toolUseComplete?: boolean;
   toolInputDelta?: ToolInputDeltaInfo;
+}
+
+export interface StreamUsageInfo {
+  inputTokens: number;
+  outputTokens: number;
+  contextWindowTokens?: number;
+  contextUsedTokens?: number;
+  contextRemainingTokens?: number;
+  contextRemainingPercent?: number;
 }
 
 export interface ToolUseInfo {

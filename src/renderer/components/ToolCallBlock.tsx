@@ -57,17 +57,17 @@ export const ToolCallBlock = memo(function ToolCallBlock({
   onAllowForSession,
   onAllowAllForSession,
 }: ToolCallBlockProps) {
-  const [isExpanded, setIsExpanded] = useState(toolCall.status === 'pending');
   const isPending = toolCall.status === 'pending';
+  const [isExpanded, setIsExpanded] = useState(isPending);
   const isQueued = toolCall.status === 'queued';
   const isInputStreaming = toolCall.inputStreaming === true;
   const streamedInputLength = toolCall.inputText?.length ?? 0;
 
   useEffect(() => {
-    if (isPending || isInputStreaming) {
+    if (isPending) {
       setIsExpanded(true);
     }
-  }, [isPending, isInputStreaming]);
+  }, [isPending]);
 
   const displayName = TOOL_DISPLAY_NAMES[toolCall.name] || toolCall.name;
 
@@ -102,7 +102,10 @@ export const ToolCallBlock = memo(function ToolCallBlock({
     )}>
       {/* Header */}
       <button
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => {
+          if (isPending) return;
+          setIsExpanded(!isExpanded);
+        }}
         className='w-full flex items-center gap-2 px-3 py-2.5 hover:bg-secondary/65 transition-colors text-left'
       >
         <span className='text-muted-foreground'>

@@ -408,6 +408,7 @@ export class AgentService {
    */
   private contentBlockToolMap = new Map<number, { id: string; name: string }>();
   private contentBlockAccumulator = new Map<number, string>();
+  private hasStreamedText = false;
 
   /**
    * Set of tool IDs that were already emitted via streaming events.
@@ -419,6 +420,7 @@ export class AgentService {
     this.contentBlockToolMap.clear();
     this.contentBlockAccumulator.clear();
     this.streamedToolIds.clear();
+    this.hasStreamedText = false;
   }
 
   private mapSdkMessageToChunks(msg: SDKMessage): StreamChunk[] {
@@ -474,7 +476,7 @@ export class AgentService {
 
     for (const block of content) {
       if (block.type === 'text' && 'text' in block) {
-        if (this.streamedToolIds.size === 0) {
+        if (!this.hasStreamedText) {
           chunks.push({ type: 'text', content: block.text });
         }
       } else if (block.type === 'tool_use' && 'id' in block) {
@@ -545,6 +547,7 @@ export class AgentService {
         const delta = eventAny.delta as Record<string, unknown> | undefined;
 
         if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
+          this.hasStreamedText = true;
           chunks.push({ type: 'text', content: delta.text });
         } else if (delta?.type === 'input_json_delta' && typeof delta.partial_json === 'string' && index !== undefined) {
           const toolInfo = this.contentBlockToolMap.get(index);
@@ -659,12 +662,101 @@ export class AgentService {
   }
 
   private handleResultMessage(msg: SDKResultSuccess | SDKResultError): StreamChunk[] {
+    const usage = this.buildUsagePayload(msg);
+
     if (msg.subtype === 'success') {
-      return [{ type: 'done', content: '' }];
+      return [{
+        type: 'done',
+        content: '',
+        usage,
+      }];
     }
+
     const errors = 'errors' in msg ? (msg as SDKResultError).errors : [];
     const errorMsg = errors.length > 0 ? errors.join('; ') : `SDK error: ${msg.subtype}`;
-    return [{ type: 'error', content: errorMsg }];
+    return [{
+      type: 'error',
+      content: errorMsg,
+      usage,
+    }];
+  }
+
+  private buildUsagePayload(msg: SDKResultSuccess | SDKResultError): StreamChunk['usage'] | undefined {
+    const usageRecord = this.toRecord((msg as unknown as Record<string, unknown>).usage);
+    if (!usageRecord) return undefined;
+
+    const usageInputTokens = this.readNumber(usageRecord, 'input_tokens', 'inputTokens', 'prompt_tokens', 'promptTokens');
+    const usageOutputTokens = this.readNumber(usageRecord, 'output_tokens', 'outputTokens', 'completion_tokens', 'completionTokens');
+
+    const modelUsageContainer = this.toRecord((msg as unknown as Record<string, unknown>).modelUsage)
+      ?? this.toRecord((msg as unknown as Record<string, unknown>).model_usage);
+
+    const modelUsageEntries = Object.values(modelUsageContainer ?? {})
+      .map((entry) => this.toRecord(entry))
+      .filter((entry): entry is Record<string, unknown> => Boolean(entry));
+
+    const aggregatedInputTokens = modelUsageEntries.reduce((sum, current) => {
+      return sum + (this.readNumber(current, 'inputTokens', 'input_tokens') ?? 0);
+    }, 0);
+    const aggregatedOutputTokens = modelUsageEntries.reduce((sum, current) => {
+      return sum + (this.readNumber(current, 'outputTokens', 'output_tokens') ?? 0);
+    }, 0);
+
+    const inputTokens = aggregatedInputTokens > 0 ? aggregatedInputTokens : (usageInputTokens ?? 0);
+    const outputTokens = aggregatedOutputTokens > 0 ? aggregatedOutputTokens : (usageOutputTokens ?? 0);
+
+    const primaryModelUsage = modelUsageEntries.reduce<Record<string, unknown> | null>((selected, current) => {
+      const currentWindow = this.readNumber(current, 'contextWindow', 'context_window') ?? 0;
+      if (currentWindow <= 0) return selected;
+      if (!selected) return current;
+      const selectedWindow = this.readNumber(selected, 'contextWindow', 'context_window') ?? 0;
+      return currentWindow > selectedWindow ? current : selected;
+    }, null);
+
+    const contextWindowTokens = primaryModelUsage
+      ? this.readNumber(primaryModelUsage, 'contextWindow', 'context_window')
+      : this.readNumber(usageRecord, 'contextWindow', 'context_window');
+
+    const contextUsedTokens = primaryModelUsage
+      ? (this.readNumber(primaryModelUsage, 'inputTokens', 'input_tokens') ?? 0)
+        + (this.readNumber(primaryModelUsage, 'outputTokens', 'output_tokens') ?? 0)
+      : undefined;
+
+    const contextRemainingTokens = (
+      typeof contextWindowTokens === 'number' && typeof contextUsedTokens === 'number'
+    ) ? Math.max(0, contextWindowTokens - contextUsedTokens) : undefined;
+
+    const contextRemainingPercent = (
+      typeof contextWindowTokens === 'number'
+      && contextWindowTokens > 0
+      && typeof contextRemainingTokens === 'number'
+    ) ? Number(((contextRemainingTokens / contextWindowTokens) * 100).toFixed(1)) : undefined;
+
+    return {
+      inputTokens,
+      outputTokens,
+      contextWindowTokens,
+      contextUsedTokens,
+      contextRemainingTokens,
+      contextRemainingPercent,
+    };
+  }
+
+  private toRecord(value: unknown): Record<string, unknown> | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+    return value as Record<string, unknown>;
+  }
+
+  private readNumber(record: Record<string, unknown>, ...keys: string[]): number | undefined {
+    for (const key of keys) {
+      const rawValue = record[key];
+      if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+        return rawValue;
+      }
+    }
+    return undefined;
   }
 
   // ---------------------------------------------------------------------------

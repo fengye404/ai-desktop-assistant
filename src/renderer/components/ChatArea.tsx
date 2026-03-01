@@ -15,6 +15,8 @@ import {
   X,
   ChevronDown,
   Check,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
@@ -57,11 +59,6 @@ const TOOL_PROCESSING_MESSAGES = [
   '执行操作',
   '等待结果',
   '继续处理',
-];
-const CONTINUE_MESSAGES = [
-  '继续生成中',
-  '整理后续内容',
-  '正在补全答案',
 ];
 const WAIT_TIME_HINT_THRESHOLD_SEC = 8;
 const DOUBLE_ESCAPE_INTERVAL_MS = 450;
@@ -107,6 +104,16 @@ function formatSizeLabel(sizeBytes: number): string {
     return `${Math.max(1, Math.round(sizeBytes / 1024))}KB`;
   }
   return `${(sizeBytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function formatTokenCount(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '--';
+  return Math.max(0, Math.round(value)).toLocaleString('en-US');
+}
+
+function formatPercent(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '--';
+  return `${Math.max(0, value).toFixed(1)}%`;
 }
 
 function isLikelyImageFile(file: Pick<File, 'name' | 'type'>): boolean {
@@ -204,6 +211,10 @@ const hasTextContent = (items: { type: string }[]) => {
   return items.some(item => item.type === 'text');
 };
 
+const hasToolContent = (items: { type: string }[]) => {
+  return items.some(item => item.type === 'tool');
+};
+
 const hasPendingToolApproval = (items: Array<{ type: string; toolCall?: { status?: string } }>) => {
   return items.some(item => item.type === 'tool' && item.toolCall?.status === 'pending');
 };
@@ -215,6 +226,7 @@ export function ChatArea() {
   const streamItems = useChatStore((s) => s.streamItems);
   const pendingApprovalId = useChatStore((s) => s.pendingApprovalId);
   const isWaitingResponse = useChatStore((s) => s.isWaitingResponse);
+  const usageStats = useChatStore((s) => s.usageStats);
   const sendMessage = useChatStore((s) => s.sendMessage);
   const cancelStream = useChatStore((s) => s.cancelStream);
   const clearHistory = useChatStore((s) => s.clearHistory);
@@ -262,11 +274,15 @@ export function ChatArea() {
   const inputHistoryDraftRef = useRef('');
   const hasPendingApproval = pendingApprovalId !== null || hasPendingToolApproval(streamItems);
   const hasStreamText = hasTextContent(streamItems);
-  const shouldShowThinking = !hasPendingApproval && ((isLoading && !hasStreamText) || isWaitingResponse);
-  const shouldShowContinue = !hasPendingApproval && isLoading && hasStreamText && !isWaitingResponse;
-  const activeWaitStage: WaitStage = hasPendingApproval ? 'approval' : ((shouldShowThinking || shouldShowContinue) ? 'model' : null);
+  const hasStreamTool = hasToolContent(streamItems);
+  const hasAnyStreamOutput = hasStreamText || hasStreamTool;
+  const shouldShowThinking = !hasPendingApproval && !hasAnyStreamOutput && (isLoading || isWaitingResponse);
+  const activeWaitStage: WaitStage = hasPendingApproval ? 'approval' : (shouldShowThinking ? 'model' : null);
   const showWaitDurationHint = waitElapsedSec >= WAIT_TIME_HINT_THRESHOLD_SEC;
   const hasComposedContent = input.trim().length > 0 || pastedImages.length > 0;
+  const contextRemainingPercentLabel = formatPercent(usageStats.contextRemainingPercent);
+  const totalInputTokensLabel = formatTokenCount(usageStats.totalInputTokens);
+  const totalOutputTokensLabel = formatTokenCount(usageStats.totalOutputTokens);
 
   const scrollToBottom = useCallback(() => {
     const viewport = scrollViewportRef.current;
@@ -307,12 +323,8 @@ export function ChatArea() {
 
   // 动态切换思考文字，带淡入淡出效果
   useEffect(() => {
-    if (shouldShowThinking || shouldShowContinue) {
-      const messages = isWaitingResponse
-        ? TOOL_PROCESSING_MESSAGES
-        : hasStreamText
-          ? CONTINUE_MESSAGES
-          : THINKING_MESSAGES;
+    if (shouldShowThinking) {
+      const messages = isWaitingResponse ? TOOL_PROCESSING_MESSAGES : THINKING_MESSAGES;
       const interval = setInterval(() => {
         setThinkingText(prev => {
           const currentIndex = messages.indexOf(prev);
@@ -326,7 +338,7 @@ export function ChatArea() {
       }, 1500);
       return () => clearInterval(interval);
     }
-  }, [shouldShowThinking, shouldShowContinue, hasStreamText, isWaitingResponse]);
+  }, [shouldShowThinking, isWaitingResponse]);
 
   useEffect(() => {
     if (!activeWaitStage) {
@@ -1335,27 +1347,6 @@ export function ChatArea() {
             </div>
           )}
 
-          {/* 已经有部分输出但还在继续生成时，保持一个轻量状态提示，避免“半句卡住”的错觉 */}
-          {shouldShowContinue && (
-            <div className="flex justify-start message-enter">
-              <div className="px-3 py-2 rounded-xl assistant-message border border-border/40">
-                <div className="flex items-center gap-2">
-                  <Bot className="h-4 w-4 text-primary/80 animate-pulse" />
-                  <span className="text-xs text-foreground/75">{thinkingText}</span>
-                  <div className="flex items-center gap-1">
-                    <div className="w-1 h-1 rounded-full bg-primary/60 loading-dot" />
-                    <div className="w-1 h-1 rounded-full bg-primary/60 loading-dot" />
-                    <div className="w-1 h-1 rounded-full bg-primary/60 loading-dot" />
-                  </div>
-                </div>
-                {showWaitDurationHint && activeWaitStage === 'model' && (
-                  <div className="mt-1 text-[11px] text-foreground/50">
-                    当前阶段已等待 {waitElapsedSec} 秒
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
         </div>
       </ScrollArea>
 
@@ -1495,6 +1486,19 @@ export function ChatArea() {
                     className="flex-1 min-h-[40px] max-h-[200px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-[0.95rem] placeholder:text-muted-foreground/60"
                     rows={1}
                   />
+                  <div className="shrink-0 rounded-lg border border-border/60 bg-secondary/40 px-2.5 py-1.5 text-[10px] leading-[1.1rem] text-foreground/82">
+                    <div className="text-muted-foreground/85">余量 {contextRemainingPercentLabel}</div>
+                    <div className="mt-0.5 flex items-center gap-2">
+                      <span className="inline-flex items-center gap-0.5">
+                        <ArrowUp className="h-3 w-3 text-primary/85" />
+                        {totalInputTokensLabel}
+                      </span>
+                      <span className="inline-flex items-center gap-0.5">
+                        <ArrowDown className="h-3 w-3 text-primary/85" />
+                        {totalOutputTokensLabel}
+                      </span>
+                    </div>
+                  </div>
                   {isLoading ? (
                     <Button
                       variant="destructive"

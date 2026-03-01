@@ -45,7 +45,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   createSession: async () => {
     try {
       await electronApiClient.abortStream();
-      useChatStore.getState().resetStreamState();
+      const chatStore = useChatStore.getState();
+      chatStore.resetStreamState();
+      chatStore.resetUsageStats();
 
       const session = await electronApiClient.sessionCreate();
       set({
@@ -63,7 +65,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
     try {
       await electronApiClient.abortStream();
-      useChatStore.getState().resetStreamState();
+      const chatStore = useChatStore.getState();
+      chatStore.resetStreamState();
+      chatStore.resetUsageStats();
 
       const session = await electronApiClient.sessionSwitch(id);
       if (!session) return;

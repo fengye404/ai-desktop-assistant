@@ -14,12 +14,6 @@ const TOOL_PROCESSING_MESSAGES = [
   '继续处理',
 ];
 
-const CONTINUE_MESSAGES = [
-  '继续生成中',
-  '整理后续内容',
-  '正在补全答案',
-];
-
 const WAIT_TIME_HINT_THRESHOLD_SEC = 8;
 
 type WaitStage = 'approval' | 'model' | null;
@@ -28,6 +22,7 @@ interface UseWaitingStateOptions {
   hasPendingApproval: boolean;
   isLoading: boolean;
   hasStreamText: boolean;
+  hasStreamTool?: boolean;
   isWaitingResponse: boolean;
 }
 
@@ -35,17 +30,19 @@ export function useWaitingState({
   hasPendingApproval,
   isLoading,
   hasStreamText,
+  hasStreamTool = false,
   isWaitingResponse,
 }: UseWaitingStateOptions) {
   const [thinkingText, setThinkingText] = useState(THINKING_MESSAGES[0]);
   const [waitElapsedSec, setWaitElapsedSec] = useState(0);
   const waitStartTimestampRef = useRef<number | null>(null);
+  const hasAnyStreamOutput = hasStreamText || hasStreamTool;
 
-  const shouldShowThinking = !hasPendingApproval && ((isLoading && !hasStreamText) || isWaitingResponse);
-  const shouldShowContinue = !hasPendingApproval && isLoading && hasStreamText && !isWaitingResponse;
+  const shouldShowThinking = !hasPendingApproval && !hasAnyStreamOutput && (isLoading || isWaitingResponse);
+  const shouldShowContinue = false;
   const activeWaitStage: WaitStage = hasPendingApproval
     ? 'approval'
-    : ((shouldShowThinking || shouldShowContinue) ? 'model' : null);
+    : (shouldShowThinking ? 'model' : null);
   const showWaitDurationHint = waitElapsedSec >= WAIT_TIME_HINT_THRESHOLD_SEC;
 
   const resetThinking = useCallback(() => {
@@ -53,12 +50,8 @@ export function useWaitingState({
   }, []);
 
   useEffect(() => {
-    if (shouldShowThinking || shouldShowContinue) {
-      const messages = isWaitingResponse
-        ? TOOL_PROCESSING_MESSAGES
-        : hasStreamText
-          ? CONTINUE_MESSAGES
-          : THINKING_MESSAGES;
+    if (shouldShowThinking) {
+      const messages = isWaitingResponse ? TOOL_PROCESSING_MESSAGES : THINKING_MESSAGES;
       const interval = setInterval(() => {
         setThinkingText(prev => {
           const currentIndex = messages.indexOf(prev);
@@ -68,7 +61,7 @@ export function useWaitingState({
       }, 1500);
       return () => clearInterval(interval);
     }
-  }, [shouldShowThinking, shouldShowContinue, hasStreamText, isWaitingResponse]);
+  }, [shouldShowThinking, isWaitingResponse]);
 
   useEffect(() => {
     if (!activeWaitStage) {

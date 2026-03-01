@@ -45,6 +45,11 @@ export function anthropicRequestToOpenAI(req: AnthropicRequest): OpenAIRequest {
     stream: req.stream ?? false,
   };
 
+  // Request usage metrics in streaming mode so token stats are available.
+  if (result.stream) {
+    result.stream_options = { include_usage: true };
+  }
+
   if (req.max_tokens != null) result.max_tokens = req.max_tokens;
   if (req.temperature != null) result.temperature = req.temperature;
   if (req.top_p != null) result.top_p = req.top_p;
