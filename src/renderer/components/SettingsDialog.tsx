@@ -660,6 +660,45 @@ export function SettingsDialog() {
       skill.description.toLowerCase().includes(query),
     );
   }, [skillItems, skillQuery]);
+  const sandboxModeEnabled = runtimeConfig.sandbox.mode === 'sandbox';
+  const sandboxSettingsEnabled = runtimeConfig.sandbox.sandboxSettings.enabled === true;
+  const allowUnsandboxedCommands = runtimeConfig.sandbox.sandboxSettings.allowUnsandboxedCommands === true;
+  const allowManagedDomainsOnly = runtimeConfig.sandbox.sandboxSettings.network?.allowManagedDomainsOnly === true;
+  const allowedDomains = runtimeConfig.sandbox.sandboxSettings.network?.allowedDomains ?? [];
+  const allowWritePaths = runtimeConfig.sandbox.sandboxSettings.filesystem?.allowWrite ?? [];
+  const denyWritePaths = runtimeConfig.sandbox.sandboxSettings.filesystem?.denyWrite ?? [];
+  const denyReadPaths = runtimeConfig.sandbox.sandboxSettings.filesystem?.denyRead ?? [];
+
+  const renderListPreview = (items: string[], emptyText: string) => {
+    if (items.length === 0) {
+      return (
+        <span className="rounded-md border border-dashed border-border/60 bg-background/30 px-2 py-1 text-[11px] text-muted-foreground/85">
+          {emptyText}
+        </span>
+      );
+    }
+
+    const visibleItems = items.slice(0, 6);
+    const remain = items.length - visibleItems.length;
+    return (
+      <>
+        {visibleItems.map((item, index) => (
+          <span
+            key={`${item}-${index}`}
+            className="max-w-full truncate rounded-md border border-border/60 bg-background/40 px-2 py-1 font-mono text-[11px] text-foreground/85"
+            title={item}
+          >
+            {item}
+          </span>
+        ))}
+        {remain > 0 && (
+          <span className="rounded-md border border-border/60 bg-secondary/45 px-2 py-1 text-[11px] text-muted-foreground">
+            +{remain}
+          </span>
+        )}
+      </>
+    );
+  };
 
   const updateSandboxConfig = useCallback((patch: Partial<RuntimeConfig['sandbox']>) => {
     setRuntimeConfig((prev) => ({
@@ -1060,166 +1099,210 @@ export function SettingsDialog() {
                         <Wrench className="h-4 w-4 text-muted-foreground" />
                         <p className="text-sm font-semibold text-foreground/95">沙箱执行环境</p>
                       </div>
-                      <span className="rounded-full border border-border/60 bg-background/45 px-3 py-1 text-xs text-muted-foreground">
-                        模式: {runtimeConfig.sandbox.mode === 'sandbox' ? 'Sandbox' : 'Local'}
+                      <span
+                        className={cn(
+                          'rounded-full border px-3 py-1 text-xs',
+                          sandboxModeEnabled && sandboxSettingsEnabled
+                            ? 'border-primary/45 bg-primary/12 text-foreground'
+                            : 'border-border/60 bg-background/45 text-muted-foreground',
+                        )}
+                      >
+                        {sandboxModeEnabled && sandboxSettingsEnabled ? '沙箱已生效' : '本地模式'}
                       </span>
                     </div>
                     <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                      通过 Claude Agent SDK `options.sandbox` 控制沙箱。应用层不再包装 Docker 命令。
+                      通过 Claude Agent SDK `options.sandbox` 控制沙箱，界面按策略分组展示，降低配置误操作概率。
                     </p>
                   </div>
 
-                  <div className="inline-flex w-full rounded-xl border border-border/60 bg-secondary/35 p-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        updateSandboxConfig({ mode: 'local' });
-                        updateSandboxSettings({ enabled: false });
-                      }}
-                      aria-pressed={runtimeConfig.sandbox.mode === 'local'}
-                      className={cn(
-                        'flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition-all duration-200',
-                        runtimeConfig.sandbox.mode === 'local'
-                          ? 'border-primary/52 bg-[linear-gradient(135deg,hsl(var(--primary)/0.58),hsl(var(--cool-accent)/0.44))] text-primary-foreground'
-                          : 'border-transparent text-muted-foreground hover:bg-secondary/65 hover:text-foreground',
-                      )}
-                    >
-                      本地模式
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        updateSandboxConfig({ mode: 'sandbox' });
-                        updateSandboxSettings({ enabled: true });
-                      }}
-                      aria-pressed={runtimeConfig.sandbox.mode === 'sandbox'}
-                      className={cn(
-                        'flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition-all duration-200',
-                        runtimeConfig.sandbox.mode === 'sandbox'
-                          ? 'border-primary/52 bg-[linear-gradient(135deg,hsl(var(--primary)/0.58),hsl(var(--cool-accent)/0.44))] text-primary-foreground'
-                          : 'border-transparent text-muted-foreground hover:bg-secondary/65 hover:text-foreground',
-                      )}
-                    >
-                      沙箱模式（SDK）
-                    </button>
-                  </div>
+                  <div className="overflow-hidden rounded-2xl border border-border/60 bg-[linear-gradient(160deg,hsl(var(--background)/0.78),hsl(var(--secondary)/0.3))]">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/55 px-4 py-3.5">
+                      <div>
+                        <p className="text-sm font-medium text-foreground/95">自动执行模式</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">选择命令执行模式：本地或沙箱</p>
+                      </div>
+                      <div className="inline-flex rounded-lg border border-border/65 bg-background/35 p-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateSandboxConfig({ mode: 'local' });
+                            updateSandboxSettings({ enabled: false });
+                          }}
+                          aria-pressed={!sandboxModeEnabled}
+                          className={cn(
+                            'rounded-md px-3 py-1.5 text-xs font-medium transition-all',
+                            !sandboxModeEnabled
+                              ? 'bg-foreground text-background shadow-[0_6px_14px_hsl(var(--background)/0.25)]'
+                              : 'text-muted-foreground hover:text-foreground',
+                          )}
+                        >
+                          每次询问（本地）
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateSandboxConfig({ mode: 'sandbox' });
+                            updateSandboxSettings({ enabled: true });
+                          }}
+                          aria-pressed={sandboxModeEnabled}
+                          className={cn(
+                            'rounded-md px-3 py-1.5 text-xs font-medium transition-all',
+                            sandboxModeEnabled
+                              ? 'bg-foreground text-background shadow-[0_6px_14px_hsl(var(--background)/0.25)]'
+                              : 'text-muted-foreground hover:text-foreground',
+                          )}
+                        >
+                          在沙箱中自动执行
+                        </button>
+                      </div>
+                    </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-foreground/90">sandboxSettings.enabled</label>
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/55 px-4 py-3.5">
+                      <div>
+                        <p className="text-sm font-medium text-foreground/95">沙箱启用开关 · sandboxSettings.enabled</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">总开关，决定 SDK 沙箱是否真正启用。</p>
+                      </div>
                       <button
                         type="button"
                         onClick={() => updateSandboxSettings({
-                          enabled: runtimeConfig.sandbox.sandboxSettings.enabled !== true,
+                          enabled: !sandboxSettingsEnabled,
                         })}
-                        aria-pressed={runtimeConfig.sandbox.sandboxSettings.enabled === true}
+                        aria-pressed={sandboxSettingsEnabled}
                         className={cn(
-                          'flex h-10 w-full items-center justify-between rounded-lg border px-3 text-sm transition-all',
-                          runtimeConfig.sandbox.sandboxSettings.enabled
+                          'inline-flex h-9 min-w-[108px] items-center justify-between rounded-full border px-3 text-xs font-medium transition-all',
+                          sandboxSettingsEnabled
                             ? 'border-primary/45 bg-primary/15 text-foreground'
-                            : 'border-border/65 bg-background/35 text-muted-foreground',
+                            : 'border-border/65 bg-background/35 text-muted-foreground/90',
                         )}
                       >
-                        <span>{runtimeConfig.sandbox.sandboxSettings.enabled ? '沙箱已启用' : '沙箱已禁用'}</span>
-                        <span className="text-xs">{runtimeConfig.sandbox.sandboxSettings.enabled ? 'ON' : 'OFF'}</span>
+                        <span>{sandboxSettingsEnabled ? '已启用' : '已禁用'}</span>
+                        <span className="text-[11px]">{sandboxSettingsEnabled ? '开' : '关'}</span>
                       </button>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-foreground/90">allowUnsandboxedCommands</label>
-                      <button
-                        type="button"
-                        onClick={() => updateSandboxSettings({
-                          allowUnsandboxedCommands: runtimeConfig.sandbox.sandboxSettings.allowUnsandboxedCommands !== true,
-                        })}
-                        aria-pressed={runtimeConfig.sandbox.sandboxSettings.allowUnsandboxedCommands === true}
-                        className={cn(
-                          'flex h-10 w-full items-center justify-between rounded-lg border px-3 text-sm transition-all',
-                          runtimeConfig.sandbox.sandboxSettings.allowUnsandboxedCommands
-                            ? 'border-primary/45 bg-primary/15 text-foreground'
-                            : 'border-border/65 bg-background/35 text-muted-foreground',
-                        )}
-                      >
-                        <span>{runtimeConfig.sandbox.sandboxSettings.allowUnsandboxedCommands ? '允许未沙箱命令' : '仅允许沙箱命令'}</span>
-                        <span className="text-xs">{runtimeConfig.sandbox.sandboxSettings.allowUnsandboxedCommands ? 'ON' : 'OFF'}</span>
-                      </button>
-                    </div>
-                    <div className="space-y-2 sm:col-span-2">
-                      <label className="text-xs font-medium text-foreground/90">network.allowManagedDomainsOnly</label>
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/55 px-4 py-3.5">
+                      <div>
+                        <p className="text-sm font-medium text-foreground/95">自动执行网络访问</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">控制沙箱命令是否仅允许托管域名访问。</p>
+                      </div>
                       <button
                         type="button"
                         onClick={() => updateSandboxNetwork({
-                          allowManagedDomainsOnly: runtimeConfig.sandbox.sandboxSettings.network?.allowManagedDomainsOnly !== true,
+                          allowManagedDomainsOnly: !allowManagedDomainsOnly,
                         })}
-                        aria-pressed={runtimeConfig.sandbox.sandboxSettings.network?.allowManagedDomainsOnly === true}
+                        aria-pressed={allowManagedDomainsOnly}
                         className={cn(
-                          'flex h-10 w-full items-center justify-between rounded-lg border px-3 text-sm transition-all',
-                          runtimeConfig.sandbox.sandboxSettings.network?.allowManagedDomainsOnly
+                          'inline-flex h-9 min-w-[108px] items-center justify-between rounded-full border px-3 text-xs font-medium transition-all',
+                          allowManagedDomainsOnly
                             ? 'border-primary/45 bg-primary/15 text-foreground'
-                            : 'border-border/65 bg-background/35 text-muted-foreground',
+                            : 'border-border/65 bg-background/35 text-muted-foreground/90',
                         )}
                       >
-                        <span>
-                          {runtimeConfig.sandbox.sandboxSettings.network?.allowManagedDomainsOnly
-                            ? '仅允许托管域名'
-                            : '允许非托管域名（按其他规则）'}
-                        </span>
-                        <span className="text-xs">{runtimeConfig.sandbox.sandboxSettings.network?.allowManagedDomainsOnly ? 'ON' : 'OFF'}</span>
+                        <span>{allowManagedDomainsOnly ? '仅托管域名' : '逐次确认'}</span>
+                        <span className="text-[11px]">{allowManagedDomainsOnly ? '开' : '关'}</span>
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
+                      <div>
+                        <p className="text-sm font-medium text-foreground/95">自动执行绕过沙箱</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">允许命令在沙箱外执行（高风险，不建议默认开启）。</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => updateSandboxSettings({
+                          allowUnsandboxedCommands: !allowUnsandboxedCommands,
+                        })}
+                        aria-pressed={allowUnsandboxedCommands}
+                        className={cn(
+                          'inline-flex h-9 min-w-[108px] items-center justify-between rounded-full border px-3 text-xs font-medium transition-all',
+                          allowUnsandboxedCommands
+                            ? 'border-destructive/45 bg-destructive/12 text-destructive'
+                            : 'border-border/65 bg-background/35 text-muted-foreground/90',
+                        )}
+                      >
+                        <span>{allowUnsandboxedCommands ? '允许非沙箱执行' : '仅沙箱执行'}</span>
+                        <span className="text-[11px]">{allowUnsandboxedCommands ? '开' : '关'}</span>
                       </button>
                     </div>
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <label htmlFor="sandbox-network-allowed-domains" className="text-xs font-medium text-foreground/90">
-                        network.allowedDomains (每行一个)
-                      </label>
-                      <Textarea
-                        id="sandbox-network-allowed-domains"
-                        rows={4}
-                        value={formatLineList(runtimeConfig.sandbox.sandboxSettings.network?.allowedDomains)}
-                        onChange={(e) => updateSandboxNetwork({ allowedDomains: parseLineList(e.target.value) })}
-                        placeholder="example.com"
-                        className={fieldClassName}
-                      />
+                  <div className="overflow-hidden rounded-2xl border border-border/60 bg-[linear-gradient(160deg,hsl(var(--secondary)/0.34),hsl(var(--background)/0.62))]">
+                    <div className="flex items-start gap-2.5 border-b border-border/55 px-4 py-3.5">
+                      <AlertCircle className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        在沙箱中自动执行会限制文件系统与网络权限。放开 `allowUnsandboxedCommands` 可能导致命令绕过沙箱边界。
+                      </p>
                     </div>
-                    <div className="space-y-2">
-                      <label htmlFor="sandbox-filesystem-allow-write" className="text-xs font-medium text-foreground/90">
-                        filesystem.allowWrite (每行一个)
-                      </label>
-                      <Textarea
-                        id="sandbox-filesystem-allow-write"
-                        rows={4}
-                        value={formatLineList(runtimeConfig.sandbox.sandboxSettings.filesystem?.allowWrite)}
-                        onChange={(e) => updateSandboxFilesystem({ allowWrite: parseLineList(e.target.value) })}
-                        placeholder="/tmp"
-                        className={fieldClassName}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label htmlFor="sandbox-filesystem-deny-write" className="text-xs font-medium text-foreground/90">
-                        filesystem.denyWrite (每行一个)
-                      </label>
-                      <Textarea
-                        id="sandbox-filesystem-deny-write"
-                        rows={4}
-                        value={formatLineList(runtimeConfig.sandbox.sandboxSettings.filesystem?.denyWrite)}
-                        onChange={(e) => updateSandboxFilesystem({ denyWrite: parseLineList(e.target.value) })}
-                        placeholder="/Users/secret"
-                        className={fieldClassName}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label htmlFor="sandbox-filesystem-deny-read" className="text-xs font-medium text-foreground/90">
-                        filesystem.denyRead (每行一个)
-                      </label>
-                      <Textarea
-                        id="sandbox-filesystem-deny-read"
-                        rows={4}
-                        value={formatLineList(runtimeConfig.sandbox.sandboxSettings.filesystem?.denyRead)}
-                        onChange={(e) => updateSandboxFilesystem({ denyRead: parseLineList(e.target.value) })}
-                        placeholder="/Users/secret"
-                        className={fieldClassName}
-                      />
+
+                    <div className="grid gap-3 p-4 sm:grid-cols-2">
+                      <div className="space-y-2 rounded-xl border border-border/60 bg-background/30 p-3">
+                        <label htmlFor="sandbox-network-allowed-domains" className="text-xs font-medium text-foreground/90">
+                          网络允许域名列表 · network.allowedDomains
+                        </label>
+                        <Textarea
+                          id="sandbox-network-allowed-domains"
+                          rows={4}
+                          value={formatLineList(allowedDomains)}
+                          onChange={(e) => updateSandboxNetwork({ allowedDomains: parseLineList(e.target.value) })}
+                          placeholder="example.com"
+                          className={cn('font-mono text-xs', fieldClassName)}
+                        />
+                        <div className="flex flex-wrap gap-1.5">
+                          {renderListPreview(allowedDomains, '未设置允许域名')}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 rounded-xl border border-border/60 bg-background/30 p-3">
+                        <label htmlFor="sandbox-filesystem-allow-write" className="text-xs font-medium text-foreground/90">
+                          可写目录 · filesystem.allowWrite
+                        </label>
+                        <Textarea
+                          id="sandbox-filesystem-allow-write"
+                          rows={4}
+                          value={formatLineList(allowWritePaths)}
+                          onChange={(e) => updateSandboxFilesystem({ allowWrite: parseLineList(e.target.value) })}
+                          placeholder="/tmp"
+                          className={cn('font-mono text-xs', fieldClassName)}
+                        />
+                        <div className="flex flex-wrap gap-1.5">
+                          {renderListPreview(allowWritePaths, '未设置可写目录')}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 rounded-xl border border-border/60 bg-background/30 p-3">
+                        <label htmlFor="sandbox-filesystem-deny-write" className="text-xs font-medium text-foreground/90">
+                          禁止写入目录 · filesystem.denyWrite
+                        </label>
+                        <Textarea
+                          id="sandbox-filesystem-deny-write"
+                          rows={4}
+                          value={formatLineList(denyWritePaths)}
+                          onChange={(e) => updateSandboxFilesystem({ denyWrite: parseLineList(e.target.value) })}
+                          placeholder="/Users/secret"
+                          className={cn('font-mono text-xs', fieldClassName)}
+                        />
+                        <div className="flex flex-wrap gap-1.5">
+                          {renderListPreview(denyWritePaths, '未设置禁止写入目录')}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 rounded-xl border border-border/60 bg-background/30 p-3">
+                        <label htmlFor="sandbox-filesystem-deny-read" className="text-xs font-medium text-foreground/90">
+                          禁止读取目录 · filesystem.denyRead
+                        </label>
+                        <Textarea
+                          id="sandbox-filesystem-deny-read"
+                          rows={4}
+                          value={formatLineList(denyReadPaths)}
+                          onChange={(e) => updateSandboxFilesystem({ denyRead: parseLineList(e.target.value) })}
+                          placeholder="/Users/secret"
+                          className={cn('font-mono text-xs', fieldClassName)}
+                        />
+                        <div className="flex flex-wrap gap-1.5">
+                          {renderListPreview(denyReadPaths, '未设置禁止读取目录')}
+                        </div>
+                      </div>
                     </div>
                   </div>
 

@@ -72,8 +72,15 @@ export const MessageList = memo(function MessageList({
         </div>
       )}
 
-      {messages.map((msg, i) => (
-        msg.role === 'user' ? (
+      {messages.map((msg, i) => {
+        const hasText = msg.content.trim().length > 0;
+        const hasAttachments = (msg.attachments?.length ?? 0) > 0;
+        const hasItems = (msg.items?.length ?? 0) > 0;
+
+        if (msg.role === 'user' && !hasText && !hasAttachments) return null;
+        if (msg.role === 'assistant' && !hasText && !hasItems) return null;
+
+        return msg.role === 'user' ? (
           <div key={`${msg.role}-${msg.timestamp ?? i}-${i}`} className="message-enter flex justify-end">
             <div className="px-4 py-3.5 rounded-2xl max-w-[82%] user-message rounded-br-md shadow-[0_12px_30px_hsl(var(--primary)/0.12)]">
               {msg.attachments && msg.attachments.length > 0 && (
@@ -92,9 +99,11 @@ export const MessageList = memo(function MessageList({
           <div key={`${msg.role}-${msg.timestamp ?? i}-${i}`} className="space-y-2">
             {msg.items.map((item, j) => (
               item.type === 'text' ? (
-                <div key={`${i}-text-${j}`} className="flex justify-start message-enter">
-                  <div className="px-4 py-3.5 rounded-2xl rounded-bl-md assistant-message max-w-[82%]"><MarkdownRenderer content={item.content} /></div>
-                </div>
+                item.content.trim() ? (
+                  <div key={`${i}-text-${j}`} className="flex justify-start message-enter">
+                    <div className="px-4 py-3.5 rounded-2xl rounded-bl-md assistant-message max-w-[82%]"><MarkdownRenderer content={item.content} /></div>
+                  </div>
+                ) : null
               ) : (
                 <div key={`${i}-tool-${item.toolCall.id}`} className="flex justify-start message-enter">
                   <div className="w-full max-w-[85%]"><ToolCallBlock toolCall={item.toolCall} /></div>
@@ -106,14 +115,16 @@ export const MessageList = memo(function MessageList({
           <div key={`${msg.role}-${msg.timestamp ?? i}-${i}`} className="message-enter flex justify-start">
             <div className="px-4 py-3.5 rounded-2xl max-w-[82%] assistant-message rounded-bl-md"><MarkdownRenderer content={msg.content} /></div>
           </div>
-        )
-      ))}
+        );
+      })}
 
       {streamItems.map((item, i) => (
         item.type === 'text' ? (
-          <div key={`text-${i}`} className="flex justify-start message-enter">
-            <div className="px-4 py-3.5 rounded-2xl rounded-bl-md assistant-message max-w-[82%]"><MarkdownRenderer content={item.content} /></div>
-          </div>
+          item.content.trim() ? (
+            <div key={`text-${i}`} className="flex justify-start message-enter">
+              <div className="px-4 py-3.5 rounded-2xl rounded-bl-md assistant-message max-w-[82%]"><MarkdownRenderer content={item.content} /></div>
+            </div>
+          ) : null
         ) : (
           <div key={`tool-${item.toolCall.id}`} className="flex justify-start message-enter">
             <div className="w-full max-w-[85%]">
