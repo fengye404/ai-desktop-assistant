@@ -1,10 +1,10 @@
-# AI Desktop Assistant 文档中心
+# Muse Work 文档中心
 
 > 基于 Electron + Vite + React + Tailwind CSS 构建的跨平台 AI 对话桌面应用
 
 ## 产品定位
 
-AI Desktop Assistant 定位为类似 **Anthropic Cowork** 的桌面 AI 协作工具，核心架构围绕 Claude Agent SDK 构建，提供流畅的多轮对话体验、本地文件集成和可扩展的工具系统。通过协议翻译层，同时支持 OpenAI 兼容的第三方模型提供商。
+Muse Work 定位为类似 **Anthropic Cowork** 的桌面 AI 协作工具，核心架构围绕 Claude Agent SDK 构建，提供流畅的多轮对话体验、本地文件集成和可扩展的工具系统。通过协议翻译层，同时支持 OpenAI 兼容的第三方模型提供商。
 
 ## 文档目录
 
@@ -67,7 +67,7 @@ npm run dev
 ## 项目结构
 
 ```
-ai-desktop-assistant/
+muse-work/
 ├── src/
 │   ├── main.ts                 # Electron 主进程入口
 │   ├── preload.ts              # 预加载脚本 (IPC 桥接)

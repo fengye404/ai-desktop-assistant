@@ -1,7 +1,7 @@
 {
-  "name": "ai-desktop-assistant",
+  "name": "muse-work",
   "version": "2.0.1",
-  "description": "A cross-platform AI desktop assistant supporting multiple AI providers",
+  "description": "A cross-platform desktop AI workspace supporting multiple providers",
   "main": "dist/main.js",
   "scripts": {
     "build:main": "node scripts/build-main.mjs",
@@ -85,8 +85,8 @@
     "zustand": "^5.0.11"
   },
   "build": {
-    "appId": "com.ai-desktop-assistant.app",
-    "productName": "AI Desktop Assistant",
+    "appId": "com.muse-work.app",
+    "productName": "Muse Work",
     "directories": {
       "output": "release"
     },

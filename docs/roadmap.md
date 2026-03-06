@@ -1,11 +1,11 @@
 # 产品路线图
 
-> AI Desktop Assistant 未来发展方向与功能规划
+> Muse Work 未来发展方向与功能规划
 > 参考: Claude Agent SDK / Claude Code
 
 ## 产品定位
 
-**AI Desktop Assistant** 定位为一款类似 **Anthropic Claude Cowork** 的桌面 AI 协作工具，提供：
+**Muse Work** 定位为一款类似 **Anthropic Claude Cowork** 的桌面 AI 协作工具，提供：
 
 - 流畅的多轮对话体验
 - 本地文件与项目的深度集成
@@ -551,7 +551,7 @@ AI: 压缩对话历史...
 #### 11.2 项目记忆 (CLAUDE.md)
 
 ```markdown
-# Project: AI Desktop Assistant
+# Project: Muse Work
 
 ## Tech Stack
 - Electron 28

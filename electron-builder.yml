@@ -1,8 +1,8 @@
 # Electron Builder Configuration
 # See: https://www.electron.build/configuration/configuration
 
-appId: com.ai-desktop-assistant.app
-productName: AI Desktop Assistant
+appId: com.muse-work.app
+productName: Muse Work
 
 directories:
   output: release

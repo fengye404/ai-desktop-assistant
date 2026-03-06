@@ -117,8 +117,8 @@ sdkSessions
 ## 数据位置
 
 SQLite 数据库位于用户数据目录：
-- **macOS**: `~/Library/Application Support/ai-desktop-assistant/sessions.db`
-- **Windows**: `%APPDATA%/ai-desktop-assistant/sessions.db`
-- **Linux**: `~/.config/ai-desktop-assistant/sessions.db`
+- **macOS**: `~/Library/Application Support/muse-work/sessions.db`
+- **Windows**: `%APPDATA%/muse-work/sessions.db`
+- **Linux**: `~/.config/muse-work/sessions.db`
 
 SDK 会话数据存储在工作目录中（由 SDK 管理）。

@@ -1,5 +1,5 @@
 /**
- * Custom error classes for AI Desktop Assistant
+ * Custom error classes for Muse Work
  */
 
 /**

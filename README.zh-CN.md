@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="./public/branding/app-icon-desktop.png" alt="AI Desktop Assistant Logo" width="96" />
-  <h1>AI Desktop Assistant</h1>
+  <img src="./public/branding/app-icon-desktop.png" alt="Muse Work Logo" width="96" />
+  <h1>Muse Work</h1>
   <p>
     基于 <strong>Claude Agent SDK</strong> 的桌面 AI 工作台，采用 Electron + React + TypeScript 构建。
   </p>
@@ -10,20 +10,20 @@
 </div>
 
 <p align="center">
-  <a href="https://github.com/fengye404/ai-desktop-assistant/releases">
-    <img alt="Release" src="https://img.shields.io/github/v/release/fengye404/ai-desktop-assistant?label=release" />
+  <a href="https://github.com/fengye404/muse-work/releases">
+    <img alt="Release" src="https://img.shields.io/github/v/release/fengye404/muse-work?label=release" />
   </a>
-  <a href="https://github.com/fengye404/ai-desktop-assistant/blob/main/LICENSE">
+  <a href="https://github.com/fengye404/muse-work/blob/main/LICENSE">
     <img alt="License" src="https://img.shields.io/badge/license-MIT-22c55e" />
   </a>
   <img alt="Electron" src="https://img.shields.io/badge/Electron-28-47848F?logo=electron&logoColor=white" />
   <img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.3-3178C6?logo=typescript&logoColor=white" />
-  <a href="https://github.com/fengye404/ai-desktop-assistant/stargazers">
-    <img alt="Stars" src="https://img.shields.io/github/stars/fengye404/ai-desktop-assistant" />
+  <a href="https://github.com/fengye404/muse-work/stargazers">
+    <img alt="Stars" src="https://img.shields.io/github/stars/fengye404/muse-work" />
   </a>
-  <a href="https://github.com/fengye404/ai-desktop-assistant/issues">
-    <img alt="Issues" src="https://img.shields.io/github/issues/fengye404/ai-desktop-assistant" />
+  <a href="https://github.com/fengye404/muse-work/issues">
+    <img alt="Issues" src="https://img.shields.io/github/issues/fengye404/muse-work" />
   </a>
 </p>
 
@@ -42,7 +42,7 @@
 
 ## 项目定位
 
-AI Desktop Assistant 的目标是把 AI 辅助开发流程放在一个本地桌面工作台中：配置本地安全存储、工具调用过程可视化、会话与沙箱能力由 SDK 原生驱动。
+Muse Work 的目标是把 AI 辅助开发流程放在一个本地桌面工作台中：配置本地安全存储、工具调用过程可视化、会话与沙箱能力由 SDK 原生驱动。
 
 相比纯 Web 对话页，本项目强调：
 
@@ -150,8 +150,8 @@ public/branding/                应用品牌资源
 
 欢迎提交 Issue 和 PR。
 
-- 问题反馈：[Issues](https://github.com/fengye404/ai-desktop-assistant/issues)
-- 功能建议：[Issues](https://github.com/fengye404/ai-desktop-assistant/issues)
+- 问题反馈：[Issues](https://github.com/fengye404/muse-work/issues)
+- 功能建议：[Issues](https://github.com/fengye404/muse-work/issues)
 - 提交 PR 前建议先运行：
 
 ```bash

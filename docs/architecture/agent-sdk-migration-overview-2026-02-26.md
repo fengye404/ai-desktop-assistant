@@ -5,7 +5,7 @@
 
 ## 背景
 
-AI Desktop Assistant 立项之初定位为基于 Claude Code SDK（现 Claude Agent SDK）的桌面 AI 助手，但实际开发中直接使用了 `@anthropic-ai/sdk` 和 `openai` 包，手动实现了 agentic 循环、工具系统、MCP 客户端等。本次迁移将应用改造为真正基于 `@anthropic-ai/claude-agent-sdk` 的架构。
+Muse Work 立项之初定位为基于 Claude Code SDK（现 Claude Agent SDK）的桌面 AI 助手，但实际开发中直接使用了 `@anthropic-ai/sdk` 和 `openai` 包，手动实现了 agentic 循环、工具系统、MCP 客户端等。本次迁移将应用改造为真正基于 `@anthropic-ai/claude-agent-sdk` 的架构。
 
 ## 迁移范围
 

@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="./public/branding/app-icon-desktop.png" alt="AI Desktop Assistant Logo" width="96" />
-  <h1>AI Desktop Assistant</h1>
+  <img src="./public/branding/app-icon-desktop.png" alt="Muse Work Logo" width="96" />
+  <h1>Muse Work</h1>
   <p>
     A desktop AI workspace powered by <strong>Claude Agent SDK</strong>, built with Electron + React + TypeScript.
   </p>
@@ -10,20 +10,20 @@
 </div>
 
 <p align="center">
-  <a href="https://github.com/fengye404/ai-desktop-assistant/releases">
-    <img alt="Release" src="https://img.shields.io/github/v/release/fengye404/ai-desktop-assistant?label=release" />
+  <a href="https://github.com/fengye404/muse-work/releases">
+    <img alt="Release" src="https://img.shields.io/github/v/release/fengye404/muse-work?label=release" />
   </a>
-  <a href="https://github.com/fengye404/ai-desktop-assistant/blob/main/LICENSE">
+  <a href="https://github.com/fengye404/muse-work/blob/main/LICENSE">
     <img alt="License" src="https://img.shields.io/badge/license-MIT-22c55e" />
   </a>
   <img alt="Electron" src="https://img.shields.io/badge/Electron-28-47848F?logo=electron&logoColor=white" />
   <img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.3-3178C6?logo=typescript&logoColor=white" />
-  <a href="https://github.com/fengye404/ai-desktop-assistant/stargazers">
-    <img alt="Stars" src="https://img.shields.io/github/stars/fengye404/ai-desktop-assistant" />
+  <a href="https://github.com/fengye404/muse-work/stargazers">
+    <img alt="Stars" src="https://img.shields.io/github/stars/fengye404/muse-work" />
   </a>
-  <a href="https://github.com/fengye404/ai-desktop-assistant/issues">
-    <img alt="Issues" src="https://img.shields.io/github/issues/fengye404/ai-desktop-assistant" />
+  <a href="https://github.com/fengye404/muse-work/issues">
+    <img alt="Issues" src="https://img.shields.io/github/issues/fengye404/muse-work" />
   </a>
 </p>
 
@@ -42,7 +42,7 @@
 
 ## Why This Project
 
-AI Desktop Assistant focuses on one workflow: keep AI-assisted development inside a native desktop app, with secure local config, streaming tool feedback, and extensible MCP integration.
+Muse Work focuses on one workflow: keep AI-assisted development inside a native desktop app, with secure local config, streaming tool feedback, and extensible MCP integration.
 
 Compared to a plain web chat, this project gives you:
 
@@ -150,8 +150,8 @@ public/branding/                App branding assets
 
 Issues and pull requests are welcome.
 
-- Report bugs: [Issues](https://github.com/fengye404/ai-desktop-assistant/issues)
-- Suggest features: [Issues](https://github.com/fengye404/ai-desktop-assistant/issues)
+- Report bugs: [Issues](https://github.com/fengye404/muse-work/issues)
+- Suggest features: [Issues](https://github.com/fengye404/muse-work/issues)
 - Before opening a PR, run:
 
 ```bash

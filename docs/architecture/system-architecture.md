@@ -1,10 +1,10 @@
-# AI Desktop Assistant 系统架构文档
+# Muse Work 系统架构文档
 
 > 最后更新：2026-02-28 | 基于 Agent SDK 迁移后的架构
 
 ## 1. 概述
 
-AI Desktop Assistant 是一款基于 Electron 的跨平台 AI 协作桌面应用，定位为类似 Anthropic Cowork 的本地化 AI 助手。核心架构围绕 **Claude Agent SDK** 构建，通过协议翻译层支持 OpenAI 兼容的第三方模型提供商。
+Muse Work 是一款基于 Electron 的跨平台 AI 协作桌面应用，定位为类似 Anthropic Cowork 的本地化 AI 助手。核心架构围绕 **Claude Agent SDK** 构建，通过协议翻译层支持 OpenAI 兼容的第三方模型提供商。
 
 ### 设计原则
 

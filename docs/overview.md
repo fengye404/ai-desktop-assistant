@@ -1,8 +1,8 @@
-# AI Desktop Assistant - 项目概述
+# Muse Work - 项目概述
 
 ## 项目简介
 
-AI Desktop Assistant 是一款基于 Electron + TypeScript 构建的跨平台桌面应用程序，核心架构围绕 **Claude Agent SDK** 构建，提供统一的 AI 对话界面。通过内置的协议翻译层，同时支持 Anthropic 和 OpenAI 兼容的第三方提供商。
+Muse Work 是一款基于 Electron + TypeScript 构建的跨平台桌面应用程序，核心架构围绕 **Claude Agent SDK** 构建，提供统一的 AI 对话界面。通过内置的协议翻译层，同时支持 Anthropic 和 OpenAI 兼容的第三方提供商。
 
 **核心特性：**
 - **Agent SDK 驱动**：AI 交互、工具执行、Agentic Loop 由 Claude Agent SDK 处理
@@ -32,7 +32,7 @@ AI Desktop Assistant 是一款基于 Electron + TypeScript 构建的跨平台桌
 ## 项目结构
 
 ```
-ai-desktop-assistant/
+muse-work/
 ├── src/
 │   ├── main.ts                 # Electron 主进程入口
 │   ├── preload.ts              # 预加载脚本 (IPC 桥接)

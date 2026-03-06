@@ -1,5 +1,5 @@
 /**
- * Centralized type definitions for AI Desktop Assistant
+ * Centralized type definitions for Muse Work
  */
 
 import type { SandboxSettings } from '@anthropic-ai/claude-agent-sdk';

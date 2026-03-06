@@ -1,6 +1,6 @@
 # 功能特性
 
-本目录包含 AI Desktop Assistant 各功能模块的详细说明。
+本目录包含 Muse Work 各功能模块的详细说明。
 
 ## 功能列表
 

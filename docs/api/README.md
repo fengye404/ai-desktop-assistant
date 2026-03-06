@@ -1,6 +1,6 @@
 # API 参考
 
-本文档描述 AI Desktop Assistant 的 IPC 通信接口和类型定义。
+本文档描述 Muse Work 的 IPC 通信接口和类型定义。
 
 ## IPC 通道
 
