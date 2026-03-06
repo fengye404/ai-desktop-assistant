@@ -88,9 +88,9 @@ export const electronApiClient = {
     return api ? api.abortStream() : Promise.resolve();
   },
 
-  encryptData: (data: string) => {
+  encryptData: (data: string): Promise<string> => {
     const api = getApiOrNull();
-    return api ? api.encryptData(data) : Promise.resolve(`plain:${data}`);
+    return api ? api.encryptData(data) : rejectUnavailable('encryptData');
   },
 
   decryptData: (encryptedData: string) => {

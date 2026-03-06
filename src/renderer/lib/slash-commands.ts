@@ -2,7 +2,8 @@
  * Slash command definitions and parser.
  *
  * After the SDK migration:
- * - /clear and /compact are delegated to the SDK (sent as prompts)
+ * - /clear creates a fresh session explicitly
+ * - /compact is shown as SDK-managed capability
  * - /config and /model remain UI-only operations
  * - /help shows combined built-in + SDK commands
  * - SDK slash commands from .claude/commands/ are included in suggestions
@@ -32,13 +33,13 @@ export const BUILT_IN_SLASH_COMMANDS: SlashCommandDefinition[] = [
   {
     name: 'clear',
     usage: '/clear',
-    description: '清空当前会话（SDK 处理）',
+    description: '新建并切换到空白会话',
     isSDK: true,
   },
   {
     name: 'compact',
     usage: '/compact',
-    description: '压缩历史上下文（SDK 处理）',
+    description: '查看上下文压缩状态（SDK 自动管理）',
     isSDK: true,
   },
   {

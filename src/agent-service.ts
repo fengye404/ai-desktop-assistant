@@ -363,26 +363,26 @@ export class AgentService {
 
   private mapSdkMessageToChunks(msg: SDKMessage): StreamChunk[] {
     switch (msg.type) {
-      case 'system':
-        return this.handleSystemMessage(msg as SDKSystemMessage);
+    case 'system':
+      return this.handleSystemMessage(msg as SDKSystemMessage);
 
-      case 'assistant':
-        return this.handleAssistantMessage(msg as SDKAssistantMessage);
+    case 'assistant':
+      return this.handleAssistantMessage(msg as SDKAssistantMessage);
 
-      case 'stream_event':
-        return this.handleStreamEvent(msg as SDKPartialAssistantMessage);
+    case 'stream_event':
+      return this.handleStreamEvent(msg as SDKPartialAssistantMessage);
 
-      case 'result':
-        return this.handleResultMessage(msg as SDKResultSuccess | SDKResultError);
+    case 'result':
+      return this.handleResultMessage(msg as SDKResultSuccess | SDKResultError);
 
-      case 'user':
-        return this.handleUserMessage(msg as SDKUserMessage);
+    case 'user':
+      return this.handleUserMessage(msg as SDKUserMessage);
 
-      case 'tool_progress':
-        return this.handleToolProgress(msg as SDKToolProgressMessage);
+    case 'tool_progress':
+      return this.handleToolProgress(msg as SDKToolProgressMessage);
 
-      default:
-        return [];
+    default:
+      return [];
     }
   }
 
@@ -459,120 +459,120 @@ export class AgentService {
     const eventAny = event as unknown as Record<string, unknown>;
 
     switch (event.type) {
-      case 'content_block_start': {
-        const index = eventAny.index as number | undefined;
-        const contentBlock = eventAny.content_block as Record<string, unknown> | undefined;
-        if (contentBlock?.type === 'tool_use' && index !== undefined) {
-          const toolId = String(contentBlock.id || '');
-          const toolName = String(contentBlock.name || '');
+    case 'content_block_start': {
+      const index = eventAny.index as number | undefined;
+      const contentBlock = eventAny.content_block as Record<string, unknown> | undefined;
+      if (contentBlock?.type === 'tool_use' && index !== undefined) {
+        const toolId = String(contentBlock.id || '');
+        const toolName = String(contentBlock.name || '');
 
-          this.contentBlockToolMap.set(index, { id: toolId, name: toolName });
-          this.contentBlockAccumulator.set(index, '');
-          this.streamedToolIds.add(toolId);
+        this.contentBlockToolMap.set(index, { id: toolId, name: toolName });
+        this.contentBlockAccumulator.set(index, '');
+        this.streamedToolIds.add(toolId);
 
+        chunks.push({
+          type: 'tool_use',
+          content: '',
+          toolUse: { id: toolId, name: toolName, input: {} },
+          toolUseComplete: false,
+        });
+      }
+      break;
+    }
+
+    case 'content_block_delta': {
+      const index = eventAny.index as number | undefined;
+      const delta = eventAny.delta as Record<string, unknown> | undefined;
+
+      if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
+        this.hasStreamedText = true;
+        chunks.push({ type: 'text', content: delta.text });
+      } else if (delta?.type === 'input_json_delta' && typeof delta.partial_json === 'string' && index !== undefined) {
+        const toolInfo = this.contentBlockToolMap.get(index);
+        if (toolInfo) {
+          const prev = this.contentBlockAccumulator.get(index) || '';
+          const accumulated = prev + delta.partial_json;
+          this.contentBlockAccumulator.set(index, accumulated);
+
+          chunks.push({
+            type: 'tool_input_delta',
+            content: '',
+            toolInputDelta: {
+              id: toolInfo.id,
+              name: toolInfo.name,
+              delta: delta.partial_json,
+              accumulated,
+            },
+          });
+        }
+      } else if (delta?.type === 'thinking_delta' && typeof delta.thinking === 'string') {
+        chunks.push({ type: 'thinking', content: delta.thinking });
+      }
+      break;
+    }
+
+    case 'content_block_stop': {
+      const index = eventAny.index as number | undefined;
+      if (index !== undefined) {
+        const toolInfo = this.contentBlockToolMap.get(index);
+        if (toolInfo) {
           chunks.push({
             type: 'tool_use',
             content: '',
-            toolUse: { id: toolId, name: toolName, input: {} },
-            toolUseComplete: false,
-          });
-        }
-        break;
-      }
-
-      case 'content_block_delta': {
-        const index = eventAny.index as number | undefined;
-        const delta = eventAny.delta as Record<string, unknown> | undefined;
-
-        if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
-          this.hasStreamedText = true;
-          chunks.push({ type: 'text', content: delta.text });
-        } else if (delta?.type === 'input_json_delta' && typeof delta.partial_json === 'string' && index !== undefined) {
-          const toolInfo = this.contentBlockToolMap.get(index);
-          if (toolInfo) {
-            const prev = this.contentBlockAccumulator.get(index) || '';
-            const accumulated = prev + delta.partial_json;
-            this.contentBlockAccumulator.set(index, accumulated);
-
-            chunks.push({
-              type: 'tool_input_delta',
-              content: '',
-              toolInputDelta: {
-                id: toolInfo.id,
-                name: toolInfo.name,
-                delta: delta.partial_json,
-                accumulated,
-              },
-            });
-          }
-        } else if (delta?.type === 'thinking_delta' && typeof delta.thinking === 'string') {
-          chunks.push({ type: 'thinking', content: delta.thinking });
-        }
-        break;
-      }
-
-      case 'content_block_stop': {
-        const index = eventAny.index as number | undefined;
-        if (index !== undefined) {
-          const toolInfo = this.contentBlockToolMap.get(index);
-          if (toolInfo) {
-            chunks.push({
-              type: 'tool_use',
-              content: '',
-              toolUse: {
-                id: toolInfo.id,
-                name: toolInfo.name,
-                input: {},
-              },
-              toolUseComplete: true,
-            });
-          }
-        }
-        break;
-      }
-
-      case 'message_start': {
-        const msgBody = eventAny.message as Record<string, unknown> | undefined;
-        const startUsage = this.toRecord(msgBody?.usage);
-        if (startUsage) {
-          const inputTokens = this.readNumber(startUsage, 'input_tokens', 'inputTokens') ?? 0;
-          this.turnInputTokens += inputTokens;
-          this.turnHasStreamUsage = true;
-          chunks.push({
-            type: 'usage',
-            content: '',
-            usage: {
-              inputTokens: this.turnInputTokens,
-              outputTokens: this.turnOutputTokens,
+            toolUse: {
+              id: toolInfo.id,
+              name: toolInfo.name,
+              input: {},
             },
+            toolUseComplete: true,
           });
         }
-        break;
       }
+      break;
+    }
 
-      case 'message_delta': {
-        const deltaUsage = this.toRecord(eventAny.usage);
-        if (deltaUsage) {
-          const outputTokens = this.readNumber(deltaUsage, 'output_tokens', 'outputTokens') ?? 0;
-          this.turnOutputTokens += outputTokens;
-          this.turnHasStreamUsage = true;
-          chunks.push({
-            type: 'usage',
-            content: '',
-            usage: {
-              inputTokens: this.turnInputTokens,
-              outputTokens: this.turnOutputTokens,
-            },
-          });
-        }
-        break;
+    case 'message_start': {
+      const msgBody = eventAny.message as Record<string, unknown> | undefined;
+      const startUsage = this.toRecord(msgBody?.usage);
+      if (startUsage) {
+        const inputTokens = this.readNumber(startUsage, 'input_tokens', 'inputTokens') ?? 0;
+        this.turnInputTokens += inputTokens;
+        this.turnHasStreamUsage = true;
+        chunks.push({
+          type: 'usage',
+          content: '',
+          usage: {
+            inputTokens: this.turnInputTokens,
+            outputTokens: this.turnOutputTokens,
+          },
+        });
       }
+      break;
+    }
 
-      case 'message_stop':
-        break;
+    case 'message_delta': {
+      const deltaUsage = this.toRecord(eventAny.usage);
+      if (deltaUsage) {
+        const outputTokens = this.readNumber(deltaUsage, 'output_tokens', 'outputTokens') ?? 0;
+        this.turnOutputTokens += outputTokens;
+        this.turnHasStreamUsage = true;
+        chunks.push({
+          type: 'usage',
+          content: '',
+          usage: {
+            inputTokens: this.turnInputTokens,
+            outputTokens: this.turnOutputTokens,
+          },
+        });
+      }
+      break;
+    }
 
-      default:
-        break;
+    case 'message_stop':
+      break;
+
+    default:
+      break;
     }
 
     return chunks;
@@ -756,35 +756,35 @@ export class AgentService {
     const transport = config.transport ?? 'stdio';
 
     switch (transport) {
-      case 'stdio': {
-        if (!config.command) return null;
-        const stdioConfig: McpStdioServerConfig = {
-          command: config.command,
-          args: config.args,
-          env: config.env,
-        };
-        return stdioConfig;
-      }
-      case 'sse': {
-        if (!config.url) return null;
-        const sseConfig: McpSSEServerConfig = {
-          type: 'sse',
-          url: config.url,
-          headers: config.headers,
-        };
-        return sseConfig;
-      }
-      case 'streamable-http': {
-        if (!config.url) return null;
-        const httpConfig: McpHttpServerConfig = {
-          type: 'http',
-          url: config.url,
-          headers: config.headers,
-        };
-        return httpConfig;
-      }
-      default:
-        return null;
+    case 'stdio': {
+      if (!config.command) return null;
+      const stdioConfig: McpStdioServerConfig = {
+        command: config.command,
+        args: config.args,
+        env: config.env,
+      };
+      return stdioConfig;
+    }
+    case 'sse': {
+      if (!config.url) return null;
+      const sseConfig: McpSSEServerConfig = {
+        type: 'sse',
+        url: config.url,
+        headers: config.headers,
+      };
+      return sseConfig;
+    }
+    case 'streamable-http': {
+      if (!config.url) return null;
+      const httpConfig: McpHttpServerConfig = {
+        type: 'http',
+        url: config.url,
+        headers: config.headers,
+      };
+      return httpConfig;
+    }
+    default:
+      return null;
     }
   }
 }

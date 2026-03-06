@@ -2,7 +2,7 @@
 
 简体中文 | [English](./README.md)
 
-![版本](https://img.shields.io/badge/version-1.2.0-4c1)
+![版本](https://img.shields.io/badge/version-2.0.1-4c1)
 ![Electron](https://img.shields.io/badge/Electron-28-47848F?logo=electron&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-3178C6?logo=typescript&logoColor=white)

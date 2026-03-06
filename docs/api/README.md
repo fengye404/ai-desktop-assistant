@@ -13,10 +13,10 @@
 | `send-message` | message, systemPrompt?, attachments? | string | 发送消息并获取完整响应 |
 | `send-message-stream` | message, systemPrompt?, attachments? | boolean | 发送消息并流式接收响应 |
 | `abort-stream` | - | void | 取消当前流式响应 |
-| `clear-history` | - | void | 清除对话历史（SDK 管理，当前为 no-op） |
+| `clear-history` | - | void | 重置当前会话上下文（显式切换到新会话） |
 | `get-history` | - | ChatMessage[] | 获取当前会话的消息历史 |
-| `compact-history` | - | CompactHistoryResult | 压缩对话历史（SDK 自动管理） |
-| `rewind-last-turn` | - | RewindHistoryResult | 撤销最后一轮（SDK 管理） |
+| `compact-history` | - | CompactHistoryResult | 查询压缩状态（当前 SDK 自动管理，返回 skipped） |
+| `rewind-last-turn` | - | RewindHistoryResult | 回退最近一轮（当前 SDK 不支持，返回 skipped） |
 | `autocomplete-paths` | partialPath | PathAutocompleteItem[] | @ 路径自动补全 |
 
 #### 配置相关
@@ -32,7 +32,7 @@
 
 | 通道 | 参数 | 返回值 | 说明 |
 |------|------|--------|------|
-| `encrypt-data` | data | string | 使用 safeStorage 加密 |
+| `encrypt-data` | data | string | 使用 safeStorage 加密（不可用时拒绝保存，不降级明文） |
 | `decrypt-data` | encryptedData | string | 使用 safeStorage 解密 |
 
 #### 会话管理

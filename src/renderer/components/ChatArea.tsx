@@ -64,6 +64,7 @@ const WAIT_TIME_HINT_THRESHOLD_SEC = 8;
 const DOUBLE_ESCAPE_INTERVAL_MS = 450;
 const MAX_ATTACHMENT_IMAGES = 6;
 const MAX_ATTACHMENT_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
+const REWIND_UNAVAILABLE_REASON = '当前 SDK 不支持按轮回退历史，可使用“新建会话”开始空白上下文。';
 const IMAGE_FILE_EXTENSIONS = new Set([
   '.jpg',
   '.jpeg',
@@ -226,7 +227,6 @@ export function ChatArea() {
   const sendMessage = useChatStore((s) => s.sendMessage);
   const cancelStream = useChatStore((s) => s.cancelStream);
   const clearHistory = useChatStore((s) => s.clearHistory);
-  const rewindLastTurn = useChatStore((s) => s.rewindLastTurn);
   const initStreamListener = useChatStore((s) => s.initStreamListener);
   const approveToolCall = useChatStore((s) => s.approveToolCall);
   const rejectToolCall = useChatStore((s) => s.rejectToolCall);
@@ -249,7 +249,7 @@ export function ChatArea() {
   const [composerHint, setComposerHint] = useState('');
   const [brandIconLoadFailed, setBrandIconLoadFailed] = useState(false);
   const [isRecoveryDialogOpen, setIsRecoveryDialogOpen] = useState(false);
-  const [recoveryActionBusy, setRecoveryActionBusy] = useState(false);
+  const recoveryActionBusy = false;
   const [recoveryMessage, setRecoveryMessage] = useState('');
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
   const modelSelectorRef = useRef<HTMLDivElement>(null);
@@ -735,27 +735,13 @@ export function ChatArea() {
   }, [appendImageFiles, resetComposerDropState]);
 
   const handleOpenRecoveryMenu = useCallback(() => {
-    setRecoveryMessage('');
+    setRecoveryMessage(REWIND_UNAVAILABLE_REASON);
     setIsRecoveryDialogOpen(true);
   }, []);
 
-  const handleRewind = useCallback(async () => {
-    setRecoveryActionBusy(true);
-    try {
-      const result = await rewindLastTurn();
-      if (result.skipped) {
-        setRecoveryMessage(result.reason ?? '当前没有可恢复的最近轮次。');
-        return;
-      }
-
-      setRecoveryMessage(`已回退最近轮次，移除 ${result.removedMessageCount} 条消息。`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setRecoveryMessage(`回退失败：${message}`);
-    } finally {
-      setRecoveryActionBusy(false);
-    }
-  }, [rewindLastTurn]);
+  const handleRewind = useCallback(() => {
+    setRecoveryMessage(REWIND_UNAVAILABLE_REASON);
+  }, []);
 
   const handleSend = useCallback(async () => {
     if (isLoading) return;
@@ -1160,8 +1146,8 @@ export function ChatArea() {
             variant="ghost"
             size="icon"
             onClick={clearHistory}
-            title="清除对话"
-            aria-label="清除当前对话"
+            title="新建会话"
+            aria-label="新建会话"
             className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-secondary/70 rounded-lg"
           >
             <Trash2 className="h-4 w-4" />
@@ -1566,7 +1552,7 @@ export function ChatArea() {
               恢复菜单
             </DialogTitle>
             <DialogDescription>
-              你可以撤销最近一轮对话，或直接清空当前会话。快捷键：`Esc + Esc`。
+              当前版本不支持按轮回退历史。你可以直接新建会话以开始空白上下文。快捷键：`Esc + Esc`。
             </DialogDescription>
           </DialogHeader>
 
@@ -1577,11 +1563,11 @@ export function ChatArea() {
               onClick={() => {
                 void handleRewind();
               }}
-              disabled={recoveryActionBusy}
+              disabled
               className="w-full justify-start gap-2"
             >
               <RotateCcw className="h-4 w-4" />
-              撤销最近一轮对话
+              撤销最近一轮对话（不可用）
             </Button>
             <Button
               type="button"
@@ -1594,7 +1580,7 @@ export function ChatArea() {
               className="w-full justify-start gap-2"
             >
               <Trash2 className="h-4 w-4" />
-              清空当前会话
+              新建空白会话
             </Button>
             {recoveryMessage && (
               <p className="text-xs text-muted-foreground">{recoveryMessage}</p>

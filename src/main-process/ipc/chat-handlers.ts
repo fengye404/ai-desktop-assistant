@@ -95,7 +95,10 @@ export function registerChatHandlers(context: MainProcessContext): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.CLEAR_HISTORY, async () => {
-    // SDK manages history; clear is a no-op or starts a new session
+    // Clear should always start a fresh session to avoid semantic ambiguity.
+    const service = context.getAgentServiceOrThrow();
+    service.abort();
+    service.setCurrentSessionId(null);
   });
 
   ipcMain.handle(IPC_CHANNELS.GET_HISTORY, async () => {
@@ -114,7 +117,7 @@ export function registerChatHandlers(context: MainProcessContext): void {
     return {
       success: true,
       skipped: true,
-      reason: 'SDK 自动管理上下文压缩',
+      reason: '当前 SDK 不提供手动压缩能力，已由 SDK 自动管理上下文。',
       beforeMessageCount: 0,
       afterMessageCount: 0,
       removedMessageCount: 0,
@@ -125,9 +128,9 @@ export function registerChatHandlers(context: MainProcessContext): void {
 
   ipcMain.handle(IPC_CHANNELS.REWIND_LAST_TURN, async () => {
     return {
-      success: true,
+      success: false,
       skipped: true,
-      reason: 'SDK 管理会话历史',
+      reason: '当前 SDK 不支持按轮回退历史。',
       removedMessageCount: 0,
       remainingMessageCount: 0,
     };

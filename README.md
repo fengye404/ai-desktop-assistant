@@ -2,12 +2,12 @@
 
 [简体中文](./README.zh-CN.md) | English
 
-![Version](https://img.shields.io/badge/version-2.0.0-4c1)
+![Version](https://img.shields.io/badge/version-2.0.1-4c1)
 ![Electron](https://img.shields.io/badge/Electron-28-47848F?logo=electron&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-3178C6?logo=typescript&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-22c55e)
-![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-6b7280)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-6b7280)
 
 An AI desktop assistant built on the **Claude Agent SDK**, with Electron + React + TypeScript.
 

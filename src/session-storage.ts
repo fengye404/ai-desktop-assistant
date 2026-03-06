@@ -373,13 +373,13 @@ export class SessionStorage {
 
   private migrateLegacySingleConfig(): void {
     const existingRow = this.db
-      .prepare("SELECT COUNT(1) as count FROM model_instances")
+      .prepare('SELECT COUNT(1) as count FROM model_instances')
       .get() as { count: number };
 
     if (existingRow.count > 0) return;
 
     const rows = this.db
-      .prepare("SELECT key, value FROM config WHERE key IN ('provider', 'model', 'baseURL', 'apiKey')")
+      .prepare('SELECT key, value FROM config WHERE key IN (\'provider\', \'model\', \'baseURL\', \'apiKey\')')
       .all() as Array<{ key: string; value: string }>;
 
     if (rows.length === 0) return;

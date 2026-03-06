@@ -91,10 +91,10 @@ export class ToolApprovalCoordinator {
 
     const result: PermissionResult = response.approved
       ? {
-          behavior: 'allow',
-          updatedInput: this.pendingApproval.input,
-          updatedPermissions: response.updatedPermissions as PermissionUpdate[] | undefined,
-        }
+        behavior: 'allow',
+        updatedInput: this.pendingApproval.input,
+        updatedPermissions: response.updatedPermissions as PermissionUpdate[] | undefined,
+      }
       : { behavior: 'deny', message: 'User denied' };
 
     this.resolvePending(result);
