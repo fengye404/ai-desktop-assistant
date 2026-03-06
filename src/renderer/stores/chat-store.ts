@@ -262,11 +262,9 @@ export const useChatStore = create<ChatState>((set, get) => {
     },
 
     clearHistory: async () => {
+      // Keep clear semantics explicit: create and switch to a fresh session.
       await electronApiClient.clearHistory();
-      useSessionStore.getState().setCurrentMessages([]);
-      streamListener?.dispose();
-      set({ ...createEmptyStreamState(), usageStats: { ...EMPTY_USAGE_STATS } });
-      await useSessionStore.getState().refreshSessions();
+      await useSessionStore.getState().createSession();
     },
 
     rewindLastTurn: async () => {

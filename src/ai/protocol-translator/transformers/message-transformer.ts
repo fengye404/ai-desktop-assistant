@@ -27,9 +27,9 @@ export function anthropicRequestToOpenAI(req: AnthropicRequest): OpenAIRequest {
       typeof req.system === 'string'
         ? req.system
         : req.system
-            .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-            .map((b) => b.text)
-            .join('\n');
+          .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+          .map((b) => b.text)
+          .join('\n');
     if (systemText) {
       openAIMessages.push({ role: 'system', content: systemText });
     }
@@ -91,34 +91,34 @@ function convertUserBlocks(blocks: AnthropicContentBlock[]): OpenAIMessage[] {
 
   for (const block of blocks) {
     switch (block.type) {
-      case 'text':
-        contentParts.push({ type: 'text', text: block.text });
-        break;
-      case 'image':
-        contentParts.push({
-          type: 'image_url',
-          image_url: {
-            url: `data:${block.source.media_type};base64,${block.source.data}`,
-          },
-        });
-        break;
-      case 'tool_result': {
-        const content =
+    case 'text':
+      contentParts.push({ type: 'text', text: block.text });
+      break;
+    case 'image':
+      contentParts.push({
+        type: 'image_url',
+        image_url: {
+          url: `data:${block.source.media_type};base64,${block.source.data}`,
+        },
+      });
+      break;
+    case 'tool_result': {
+      const content =
           typeof block.content === 'string'
             ? block.content
             : (block.content as AnthropicContentBlock[])
-                .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-                .map((b) => b.text)
-                .join('\n');
-        toolResults.push({
-          role: 'tool',
-          content: block.is_error ? `[ERROR] ${content}` : content,
-          tool_call_id: block.tool_use_id,
-        });
-        break;
-      }
-      default:
-        break;
+              .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+              .map((b) => b.text)
+              .join('\n');
+      toolResults.push({
+        role: 'tool',
+        content: block.is_error ? `[ERROR] ${content}` : content,
+        tool_call_id: block.tool_use_id,
+      });
+      break;
+    }
+    default:
+      break;
     }
   }
 
@@ -150,24 +150,24 @@ function convertAssistantBlocks(blocks: AnthropicContentBlock[]): OpenAIMessage 
 
   for (const block of blocks) {
     switch (block.type) {
-      case 'text':
-        textContent += block.text;
-        break;
-      case 'tool_use':
-        toolCalls.push({
-          id: block.id,
-          type: 'function',
-          function: {
-            name: block.name,
-            arguments: JSON.stringify(block.input),
-          },
-        });
-        break;
-      case 'thinking':
-        // Thinking blocks are Anthropic-specific; omit for OpenAI
-        break;
-      default:
-        break;
+    case 'text':
+      textContent += block.text;
+      break;
+    case 'tool_use':
+      toolCalls.push({
+        id: block.id,
+        type: 'function',
+        function: {
+          name: block.name,
+          arguments: JSON.stringify(block.input),
+        },
+      });
+      break;
+    case 'thinking':
+      // Thinking blocks are Anthropic-specific; omit for OpenAI
+      break;
+    default:
+      break;
     }
   }
 
@@ -197,9 +197,9 @@ export function openAIRequestToAnthropic(req: OpenAIRequest): AnthropicRequest {
         typeof msg.content === 'string'
           ? msg.content
           : msg.content
-              ?.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-              .map((p) => p.text)
-              .join('\n') ?? '';
+            ?.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+            .map((p) => p.text)
+            .join('\n') ?? '';
       system = system ? `${system}\n${text}` : text;
       continue;
     }

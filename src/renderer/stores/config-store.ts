@@ -323,7 +323,8 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       });
     } catch (error) {
       console.error('Save config error:', error);
-      set({ connectionStatus: { connected: false, message: '保存失败' } });
+      const message = error instanceof Error ? error.message : String(error);
+      set({ connectionStatus: { connected: false, message: `保存失败：${message}` } });
     }
   },
 

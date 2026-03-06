@@ -206,11 +206,15 @@ async function handleStreamResponse(
   let buffer = '';
   let chunkCount = 0;
   let eventCount = 0;
+  let reading = true;
 
   try {
-    while (true) {
+    while (reading) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        reading = false;
+        continue;
+      }
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
@@ -264,7 +268,29 @@ async function handleNonStreamResponse(
   res: http.ServerResponse,
   model: string,
 ): Promise<void> {
-  const openAIRes = (await fetchRes.json()) as Record<string, any>;
+  type OpenAINonStreamResponse = {
+    id?: string;
+    model?: string;
+    choices?: Array<{
+      finish_reason?: string;
+      message?: {
+        content?: string;
+        tool_calls?: Array<{
+          id: string;
+          function: {
+            name: string;
+            arguments: string;
+          };
+        }>;
+      };
+    }>;
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+    };
+  };
+
+  const openAIRes = (await fetchRes.json()) as OpenAINonStreamResponse;
   const choice = openAIRes.choices?.[0];
 
   const contentBlocks: unknown[] = [];

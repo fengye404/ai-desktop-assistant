@@ -43,13 +43,13 @@ export function openAIFinishReasonToAnthropic(
   reason: string | null,
 ): 'end_turn' | 'tool_use' | 'max_tokens' {
   switch (reason) {
-    case 'tool_calls':
-      return 'tool_use';
-    case 'length':
-      return 'max_tokens';
-    case 'stop':
-    default:
-      return 'end_turn';
+  case 'tool_calls':
+    return 'tool_use';
+  case 'length':
+    return 'max_tokens';
+  case 'stop':
+  default:
+    return 'end_turn';
   }
 }
 
@@ -57,12 +57,12 @@ export function anthropicStopReasonToOpenAI(
   reason: string | null,
 ): 'stop' | 'tool_calls' | 'length' {
   switch (reason) {
-    case 'tool_use':
-      return 'tool_calls';
-    case 'max_tokens':
-      return 'length';
-    case 'end_turn':
-    default:
-      return 'stop';
+  case 'tool_use':
+    return 'tool_calls';
+  case 'max_tokens':
+    return 'length';
+  case 'end_turn':
+  default:
+    return 'stop';
   }
 }
