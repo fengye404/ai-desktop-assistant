@@ -42,6 +42,7 @@ export function convertSdkSessionMessages(sdkMessages: SdkSessionMsg[]): ChatMes
     const content = msgObj.content;
 
     if (typeof content === 'string') {
+      if (content.trim().length === 0) continue;
       results.push({ role, content, timestamp: Date.now() });
       continue;
     }
@@ -89,6 +90,10 @@ export function convertSdkSessionMessages(sdkMessages: SdkSessionMsg[]): ChatMes
 
     const combinedText = textParts.join('\n');
     const hasToolCalls = items.some((it) => it.type === 'tool');
+
+    if (combinedText.trim().length === 0 && !hasToolCalls) {
+      continue;
+    }
 
     results.push({
       role,

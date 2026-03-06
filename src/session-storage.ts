@@ -111,6 +111,7 @@ export class SessionStorage {
 
     this.migrateLegacySingleConfig();
     this.migrateModelInstancesToProviders();
+    this.cleanupLegacyEmptyMessages();
 
     this.db.pragma('foreign_keys = ON');
   }
@@ -506,5 +507,28 @@ export class SessionStorage {
     });
 
     transaction();
+  }
+
+  private cleanupLegacyEmptyMessages(): void {
+    const hasMessagesTable = this.db
+      .prepare('SELECT 1 FROM sqlite_master WHERE type = \'table\' AND name = \'messages\'')
+      .get() as { 1: number } | undefined;
+
+    if (!hasMessagesTable) return;
+
+    try {
+      const deleted = this.db.prepare(`
+        DELETE FROM messages
+        WHERE TRIM(content) = ''
+          AND (items_data IS NULL OR length(items_data) = 0)
+          AND (attachments_data IS NULL OR length(attachments_data) = 0)
+      `).run();
+
+      if (deleted.changes > 0) {
+        console.log(`[session-storage] Removed ${deleted.changes} empty legacy messages`);
+      }
+    } catch (error) {
+      console.warn('[session-storage] Failed to cleanup legacy empty messages:', error);
+    }
   }
 }

@@ -29,6 +29,7 @@ import { FileReferenceResolver, type ResolvedUserMessage } from './chat-input/fi
 import { PathAutocompleteService } from './chat-input/path-autocomplete';
 import { McpManager } from './mcp/mcp-manager';
 import { SkillManager } from './skills/skill-manager';
+import { cleanupEmptySdkSessionMessages } from './session-transcript-cleaner';
 import { DEFAULT_RUNTIME_CONFIG, normalizeRuntimeConfig } from '../runtime-config';
 
 function hasPackageJson(targetPath: string): boolean {
@@ -87,6 +88,18 @@ export class MainProcessContext {
 
   async initializeServices(): Promise<void> {
     this.sessionStorage = new SessionStorage();
+    try {
+      const cleanup = await cleanupEmptySdkSessionMessages(this.workspaceRoot);
+      if (cleanup.entriesRemoved > 0) {
+        console.log(
+          `[main-process] Session cleanup removed ${cleanup.entriesRemoved} empty entries ` +
+          `from ${cleanup.filesUpdated}/${cleanup.filesScanned} files`,
+        );
+      }
+    } catch (error) {
+      console.warn('[main-process] Session transcript cleanup skipped:', error);
+    }
+
     this.agentService = new AgentService();
     this.agentService.setWorkingDirectory(this.workspaceRoot);
 
